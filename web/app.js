@@ -87,7 +87,7 @@ async function ask(event){
 }
 $('ask-form').addEventListener('submit',ask);$('question').addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){e.preventDefault();$('ask-form').requestSubmit();}});
 document.querySelectorAll('[data-question]').forEach(b=>b.onclick=()=>{if(state.busy)return;$('question').value=b.dataset.question;$('ask-form').requestSubmit();});
-$('clear-chat').onclick=()=>{if(state.busy)return;$('question').value='';$('answer-area').classList.add('hidden');$('suggestions').classList.remove('hidden');$('question').focus();};
+$('clear-chat').onclick=()=>{if(state.busy)return;state.answer=null;$('question').value='';$('answer-area').replaceChildren();$('answer-area').classList.add('hidden');$('suggestions').classList.remove('hidden');renderEvidence([]);renderHistory();$('question').focus();};
 function updateParams(){$('param-summary').textContent=($('strategy').value==='hybrid'?'混合检索':'向量检索')+' · top-k '+$('top-k').value;}
 $('top-k').oninput=updateParams;$('strategy').onchange=updateParams;
 async function uploadFiles(files){if(state.busy||!files.length)return;busy(true);$('global-alert').classList.add('hidden');let added=0;try{for(const file of files){if(file.size>10*1024*1024)throw new Error(file.name+' 超过 10 MB。');$('upload-status').textContent='正在导入：'+file.name;const data=new FormData();data.append('file',file);const result=await api('/documents',{method:'POST',body:data});if(!result.duplicate)added++;}toast(`已导入 ${added} 份新资料，请重建索引。`);$('upload-status').textContent=`导入完成，新增 ${added} 份；重复文件已跳过。`;}catch(e){showError(e);$('upload-status').textContent='部分文件未导入，请查看提示。';}finally{await refresh().catch(showError);busy(false);$('file-input').value='';}}
