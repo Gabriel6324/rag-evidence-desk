@@ -23,7 +23,9 @@
 
 当前版本为 **1.0.1**，包含端口自动切换和服务就绪后打开浏览器的修复。需要 Python 3.10 及以上版本，推荐 3.12。
 
-下载后完整解压，进入项目目录。Windows 可以双击 `启动.bat`；macOS 可以双击 `启动.command`；Linux 执行 `bash start.sh`。首次运行会创建 `.venv` 并安装依赖。
+下载后完整解压，进入项目目录。Windows 可以双击 `启动.bat`；macOS 在终端执行 `bash 启动.command`；Linux 执行 `bash start.sh`。首次运行会创建 `.venv` 并安装依赖。
+
+macOS 如需双击启动，先在项目目录执行一次 `chmod +x 启动.command`，赋予脚本执行权限，再双击。直接执行 `bash 启动.command` 不需要这一步。
 
 也可以手动运行：
 
