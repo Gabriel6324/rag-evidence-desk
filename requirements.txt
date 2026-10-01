@@ -1,0 +1,10 @@
+# Python 3.10+, recommended 3.12. Exact direct dependency versions used for QA.
+fastapi==0.141.1
+uvicorn==0.54.0
+qdrant-client==1.19.1
+httpx[socks]==0.28.1
+python-multipart==0.0.32
+pypdf==6.10.0
+python-docx==1.2.0
+numpy==2.3.5; python_version >= '3.11'
+numpy==2.2.6; python_version < '3.11'
