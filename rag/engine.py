@@ -58,6 +58,11 @@ class Engine:
         else:
             self.qdrant = QdrantClient(path=str(config.data_dir / "qdrant"))
         self.active = self.meta("active")
+        self.collection_available = bool(
+            self.active and self.active.get("collection") and
+            self.active.get("storage_fingerprint") == config.storage_fingerprint and
+            self.qdrant.collection_exists(self.active["collection"])
+        )
         self.chunks = self.active.get("chunks", []) if self.active else []
         self._prepare_bm25()
 
@@ -66,8 +71,12 @@ class Engine:
         return json.loads(r[0]) if r else None
 
     def set_meta(self, key, value):
-        self.db.execute("INSERT OR REPLACE INTO meta VALUES (?,?)", (key, json.dumps(value, ensure_ascii=False)))
-        self.db.commit()
+        try:
+            self.db.execute("INSERT OR REPLACE INTO meta VALUES (?,?)", (key, json.dumps(value, ensure_ascii=False)))
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
 
     def documents(self):
         with self.lock:
@@ -113,7 +122,7 @@ class Engine:
             self.ingest(path.name, path.read_bytes())
 
     def stale(self):
-        return (not self.active or self.active["revision"] != self.meta("revision") or
+        return (not self.active or not self.collection_available or self.active["revision"] != self.meta("revision") or
                 self.active["fingerprint"] != self.config.embedding_fingerprint or
                 self.active.get("storage_fingerprint") != self.config.storage_fingerprint)
 
@@ -162,8 +171,9 @@ class Engine:
                 raise
             old = self.active
             self.active, self.chunks = active, chunks
+            self.collection_available = True
             self._prepare_bm25()
-            if old:
+            if old and old.get("storage_fingerprint") == self.config.storage_fingerprint:
                 try:
                     self.qdrant.delete_collection(old["collection"])
                 except Exception:

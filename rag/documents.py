@@ -46,19 +46,25 @@ def extract(name: str, content: bytes):
                     units.append({"text": text, "location": f"第 {n} 页", "page": n})
         elif ext == ".docx":
             from docx import Document
+            from docx.text.paragraph import Paragraph
             with zipfile.ZipFile(BytesIO(content)) as z:
                 if sum(i.file_size for i in z.infolist()) > 30 * 1024 * 1024:
                     raise UserError("DOCX 解压内容过大，请拆分后导入。")
             d = Document(BytesIO(content))
-            # Paragraph numbers refer to extracted DOCX paragraphs, not layout pages.
-            for n, p in enumerate(d.paragraphs, 1):
-                if clean(p.text):
-                    units.append({"text": clean(p.text), "location": f"段落 {n}", "page": None})
-            for t, table in enumerate(d.tables, 1):
-                for r, row in enumerate(table.rows, 1):
-                    text = clean(" | ".join(c.text for c in row.cells))
+            # Keep paragraphs and tables in document order. Numbers are source positions, not pages.
+            paragraph_no, table_no = 0, 0
+            for block in d.iter_inner_content():
+                if isinstance(block, Paragraph):
+                    paragraph_no += 1
+                    text = clean(block.text)
                     if text:
-                        units.append({"text": text, "location": f"表 {t} / 行 {r}", "page": None})
+                        units.append({"text": text, "location": f"段落 {paragraph_no}", "page": None})
+                else:
+                    table_no += 1
+                    for row_no, row in enumerate(block.rows, 1):
+                        text = clean(" | ".join(c.text for c in row.cells))
+                        if text:
+                            units.append({"text": text, "location": f"表 {table_no} / 行 {row_no}", "page": None})
         else:
             try:
                 text = clean(content.decode("utf-8-sig"))
