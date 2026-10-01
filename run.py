@@ -53,7 +53,7 @@ def announce_when_ready(server, url, stopped, open_browser=True, opener=None, no
 
 def main():
     if sys.version_info < (3, 10):
-        raise SystemExit("Please install Python 3.10–3.13.")
+        raise SystemExit("Please install Python 3.10+. Python 3.12 is recommended.")
     parser = argparse.ArgumentParser(description="RAG 资料问答系统")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--strict-port", action="store_true", help="Fail instead of choosing a different port")
@@ -62,11 +62,14 @@ def main():
     if args.port != 0 and not 1024 <= args.port <= 65535:
         parser.error("port must be 0 (automatic) or between 1024 and 65535")
     try:
+        from rag.config import UserError
         import uvicorn
         from rag.app import create_app
         app = create_app()
     except ImportError as e:
         raise SystemExit("Missing dependency. Run: python -m pip install -r requirements.txt") from e
+    except UserError as e:
+        raise SystemExit(str(e)) from None
     log = lambda text: print(text, flush=True)
     try:
         listener = bind_local_socket(args.port, args.strict_port, log)

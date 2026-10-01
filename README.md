@@ -17,6 +17,7 @@
 - 调整 chunk、overlap、top-k 和相似度阈值，观察证据覆盖的变化。
 - 校验回答中的引用编号和逐字引文，点击引用查看原文，导出问答记录。
 - 检查资料与索引是否一致；重建失败时回滚元数据并保留原有索引，启动时核对活动集合是否存在。
+- 文档和向量缓存写入失败时回滚；首次启动失败会释放数据库资源，可以修正配置后重新启动。
 - 比较不同检索参数，输出 JSON、CSV 和 Markdown 评测报告。
 
 ## 本地启动
@@ -164,7 +165,7 @@ python scripts/evaluate.py
 
 默认评测使用独立临时 Qdrant 和内置资料，不修改日常知识库，也不调用外部模型。对照参数为 chunk 240 / 420 / 700 字符、top-k 3 / 5、vector / hybrid，共 12 组 × 18 道题。overlap 固定 60 字符，余弦阈值为 0.08。
 
-GitHub Actions 在 Python 3.12 下执行测试，覆盖文档顺序、检索和引用、索引写入失败恢复、API 适配与启动流程。模型测试使用模拟接口。
+GitHub Actions 在 Python 3.12 下执行测试，覆盖文档顺序、检索和引用、文档与缓存写入失败恢复、索引回滚、异常模型返回和启动流程。API 向量使用稳定的归一化计算，避免极大或极小数值变成零向量。模型测试使用模拟接口。
 
 更多参数对照：
 
@@ -178,6 +179,8 @@ python scripts/evaluate.py --no-expand --out reports/no_expand
 ```bash
 python scripts/evaluate.py --samples ./my_samples --dataset ./my_questions.json --out reports/custom
 ```
+
+自定义评测会先检查题目结构、唯一 ID 和证据标注。`source` 必须对应所导入的文件，非空 `quote` 必须出现在该文件的一个提取文本单元内；缺失或空白标注会报错，避免把无效标注计入命中率。
 
 确认 `.env` 配置有效后，可以运行实连模型评测：
 
