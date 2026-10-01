@@ -67,6 +67,18 @@ class DocumentTests(unittest.TestCase):
         for n,data in [('a.exe',b'data'),('a.txt',b''),('a.pdf',b'not a pdf')]:
             with self.assertRaises(UserError): extract(n,data)
 
+    def test_docx_preserves_interleaved_blocks_and_source_numbers(self):
+        document=Document()
+        document.add_paragraph('前置条件')
+        document.add_table(rows=1,cols=1).cell(0,0).text='表内限制'
+        document.add_paragraph('')
+        document.add_paragraph('后续结论')
+        document.add_table(rows=1,cols=1).cell(0,0).text='补充证据'
+        out=BytesIO(); document.save(out)
+        units=extract('交错.docx',out.getvalue())
+        self.assertEqual([u['text'] for u in units],['前置条件','表内限制','后续结论','补充证据'])
+        self.assertEqual([u['location'] for u in units],['段落 1','表 1 / 行 1','段落 3','表 2 / 行 1'])
+
 
 class EngineTests(unittest.TestCase):
     def setUp(self):
@@ -108,6 +120,51 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(old,self.e.active['collection'])
         self.assertTrue(self.e.qdrant.collection_exists(old))
         self.assertTrue(self.e.ask('成绩各部分占比')['claims'])
+
+    def test_failed_metadata_commit_rolls_back_before_later_write(self):
+        original=self.e.db
+        class FailCommitOnce:
+            failed=False
+            def __getattr__(self,name): return getattr(original,name)
+            def commit(self):
+                if not self.failed:
+                    self.failed=True
+                    raise RuntimeError('injected commit failure')
+                original.commit()
+        old=self.e.active.copy()
+        self.e.db=FailCommitOnce()
+        with self.assertRaises(RuntimeError): self.e.build(240,30)
+        self.assertEqual(self.e.active,old)
+        self.assertEqual(self.e.meta('active'),old)
+        self.assertFalse(original.in_transaction)
+        self.e.set_meta('unrelated',True)
+        self.e.close(); self.e=Engine(self.cfg)
+        self.assertEqual(self.e.active,old)
+        self.assertFalse(self.e.stale())
+        self.assertTrue(self.e.qdrant.collection_exists(old['collection']))
+        self.assertEqual([c.name for c in self.e.qdrant.get_collections().collections],[old['collection']])
+        self.assertTrue(self.e.ask('课程项目成绩占比')['claims'])
+
+    def test_missing_collection_requires_rebuild_after_restart(self):
+        self.e.qdrant.delete_collection(self.e.active['collection'])
+        self.e.close(); self.e=Engine(self.cfg)
+        self.assertTrue(self.e.stale())
+        self.assertTrue(self.e.status()['needs_rebuild'])
+        with self.assertRaises(UserError): self.e.ask('RRF')
+        self.e.build()
+        self.assertFalse(self.e.stale())
+
+    def test_set_meta_rolls_back_on_execute_failure(self):
+        original=self.e.db
+        class FailExecute:
+            def __getattr__(self,name): return getattr(original,name)
+            def execute(self,*args): raise RuntimeError('injected write failure')
+        self.e.db=FailExecute()
+        try:
+            with self.assertRaises(RuntimeError): self.e.set_meta('active',{'collection':'missing'})
+        finally:
+            self.e.db=original
+        self.assertEqual(self.e.meta('active'),self.e.active)
 
     def test_blocked_documents_and_unknown_question(self):
         self.assertGreater(self.e.active['blocked_count'],0)
