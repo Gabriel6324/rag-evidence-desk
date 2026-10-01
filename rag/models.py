@@ -83,25 +83,37 @@ class Embeddings:
                     {"model": self.config.embedding_model, "input": batch, "encoding_format": "float"}, self.config.timeout)
                 try:
                     data = sorted(result["data"], key=lambda x: x["index"])
-                    if [x["index"] for x in data] != list(range(len(batch))):
+                    if any(type(x["index"]) is not int for x in data) or [x["index"] for x in data] != list(range(len(batch))):
                         raise ValueError("index mismatch")
                     vectors = [x["embedding"] for x in data]
+                    if any(not isinstance(v, list) or any(type(value) not in {int, float} for value in v) for v in vectors):
+                        raise ValueError("non-numeric vector")
                 except (KeyError, TypeError, ValueError) as e:
                     raise UserError("Embedding API 返回缺少向量或索引不完整。") from e
             try:
-                arr = np.asarray(vectors, dtype=np.float32)
+                arr = np.asarray(vectors, dtype=np.float64 if self.config.embedding_mode == "api" else np.float32)
                 if arr.ndim != 2 or arr.shape[0] != len(batch) or not 8 <= arr.shape[1] <= 8192 or not np.isfinite(arr).all():
                     raise ValueError("invalid vectors")
+                if self.config.embedding_mode == "api":
+                    # Scale first so very large or very small finite vectors keep their direction.
+                    scales = np.max(np.abs(arr), axis=1, keepdims=True)
+                    if (scales == 0).any():
+                        raise ValueError("zero vector")
+                    arr /= scales
                 norms = np.linalg.norm(arr, axis=1, keepdims=True)
                 if self.config.embedding_mode == "api" and (norms == 0).any():
                     raise ValueError("zero vector")
                 arr /= np.where(norms > 0, norms, 1)
-            except (TypeError, ValueError) as e:
+            except (TypeError, ValueError, OverflowError) as e:
                 raise UserError("Embedding 维度、数值或向量数量无效。") from e
-            for i, vec in zip(indexes, arr.tolist()):
-                out[i] = vec
-                self.cache.execute("INSERT OR REPLACE INTO cache VALUES (?,?)", (keys[i], json.dumps(vec)))
-            self.cache.commit()
+            try:
+                for i, vec in zip(indexes, arr.tolist()):
+                    out[i] = vec
+                    self.cache.execute("INSERT OR REPLACE INTO cache VALUES (?,?)", (keys[i], json.dumps(vec)))
+                self.cache.commit()
+            except Exception:
+                self.cache.rollback()
+                raise
         if out and len({len(v) for v in out}) != 1:
             raise UserError("Embedding 维度发生变化，请更换数据目录并重新建立索引。")
         return out
@@ -126,7 +138,7 @@ text 中不写引用编号，前端会统一添加。无法完整回答时 claim
 def validate_answer(raw, evidence):
     """Check source existence + exact quote matching; NOT semantic entailment."""
     mapping = {e["id"]: e for e in evidence}
-    if not isinstance(raw, dict) or raw.get("status") not in {"answered", "insufficient"}:
+    if not isinstance(raw, dict) or not isinstance(raw.get("status"), str) or raw["status"] not in {"answered", "insufficient"}:
         raise UserError("模型回答不符合约定结构，已停止展示未经校验的内容。")
     missing = raw.get("missing", [])
     if not isinstance(missing, list) or any(not isinstance(x, str) for x in missing):

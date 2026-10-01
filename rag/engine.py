@@ -98,17 +98,25 @@ class Engine:
             if total + chars > 2_000_000:
                 raise UserError("资料库最多 200 万字符，请移除部分资料。")
             doc_id = uuid.uuid4().hex
-            self.db.execute("INSERT INTO docs VALUES (?,?,?,?,?,?)", (doc_id, name, sha, json.dumps(units, ensure_ascii=False), chars, now()))
-            self.db.execute("INSERT OR REPLACE INTO meta VALUES ('revision',?)", (json.dumps(self.meta("revision") + 1),))
-            self.db.commit()
+            try:
+                self.db.execute("INSERT INTO docs VALUES (?,?,?,?,?,?)", (doc_id, name, sha, json.dumps(units, ensure_ascii=False), chars, now()))
+                self.db.execute("INSERT OR REPLACE INTO meta VALUES ('revision',?)", (json.dumps(self.meta("revision") + 1),))
+                self.db.commit()
+            except Exception:
+                self.db.rollback()
+                raise
             return {"id": doc_id, "name": name, "chars": chars, "duplicate": False}
 
     def remove(self, doc_id):
         with self.lock:
-            cursor = self.db.execute("DELETE FROM docs WHERE id=?", (doc_id,))
-            if cursor.rowcount == 0:
-                raise UserError("资料不存在或已删除。")
-            self.set_meta("revision", self.meta("revision") + 1)
+            try:
+                cursor = self.db.execute("DELETE FROM docs WHERE id=?", (doc_id,))
+                if cursor.rowcount == 0:
+                    raise UserError("资料不存在或已删除。")
+                self.set_meta("revision", self.meta("revision") + 1)
+            except Exception:
+                self.db.rollback()
+                raise
 
     def source(self, doc_id):
         with self.lock:

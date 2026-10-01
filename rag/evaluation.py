@@ -27,6 +27,20 @@ def run_evaluation(config=None, sizes=(240, 420, 700), ks=(3, 5), strategies=("v
     questions = json.loads(dataset.read_text(encoding="utf-8"))
     if not isinstance(questions, list) or not questions:
         raise UserError("评测集必须为非空的问题列表。")
+    ids = set()
+    for q in questions:
+        if (not isinstance(q, dict) or not isinstance(q.get("id"), str) or not q["id"].strip()
+                or q["id"] in ids or not isinstance(q.get("question"), str) or not q["question"].strip()
+                or len(q["question"]) > 1500 or not isinstance(q.get("type"), str) or not q["type"].strip()):
+            raise UserError("评测题须包含唯一的 id、有效的 question 和 type。")
+        ids.add(q["id"])
+        evidence, keywords = q.get("evidence", []), q.get("keywords", [])
+        if (not isinstance(evidence, list) or any(not isinstance(atom, dict)
+                or not isinstance(atom.get("source"), str) or not atom["source"].strip()
+                or not isinstance(atom.get("quote"), str) or not atom["quote"].strip() for atom in evidence)):
+            raise UserError(f"评测题 {q['id']} 的 evidence 须包含有效的 source 和非空 quote。")
+        if not isinstance(keywords, list) or any(not isinstance(word, str) or not word.strip() for word in keywords):
+            raise UserError(f"评测题 {q['id']} 的 keywords 须为非空字符串列表。")
     answerable = [q for q in questions if q.get("evidence")]
     if not answerable:
         raise UserError("评测集至少需要一道带证据标注的问题。")
@@ -51,8 +65,15 @@ def run_evaluation(config=None, sizes=(240, 420, 700), ks=(3, 5), strategies=("v
         result["mode"] = cfg.public()
         engine = Engine(cfg)
         try:
+            source_units = {}
             for p in source_files:
-                engine.ingest(p.name, p.read_bytes())
+                doc = engine.ingest(p.name, p.read_bytes())
+                source_units[p.name] = engine.source(doc["id"])["units"]
+            for q in questions:
+                for atom in q.get("evidence", []):
+                    units = source_units.get(atom["source"])
+                    if units is None or not any(atom["quote"] in unit["text"] for unit in units):
+                        raise UserError(f"评测题 {q['id']} 的证据不存在于来源 {atom['source']} 的提取文本中。")
             for size in sizes:
                 progress(f"评测：建立 {size} 字符索引")
                 engine.build(size, overlap)

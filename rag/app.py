@@ -1,6 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Literal
 import re
 import threading
 from urllib.parse import urlparse
@@ -23,7 +24,7 @@ class AskRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     question: str = Field(min_length=1, max_length=1500)
     top_k: int = Field(default=5, ge=1, le=12)
-    strategy: str = "hybrid"
+    strategy: Literal["hybrid", "vector"] = "hybrid"
     threshold: float = Field(default=.08, ge=0, le=1)
     expand: bool = True
     doc_ids: list[str] = Field(default_factory=list, max_length=60)
@@ -76,16 +77,20 @@ def create_app(config=None, bootstrap=True):
 
     @asynccontextmanager
     async def lifespan(app):
-        engine = Engine(cfg)
-        app.state.engine = engine
-        if bootstrap and not engine.meta("bootstrapped"):
-            engine.seed()
-            engine.set_meta("bootstrapped", True)
-        if bootstrap and cfg.embedding_mode == "hash" and engine.documents() and engine.stale():
-            engine.build()
-        yield
-        jobs.executor.shutdown(wait=True)
-        engine.close()
+        engine = None
+        try:
+            engine = Engine(cfg)
+            app.state.engine = engine
+            if bootstrap and not engine.meta("bootstrapped"):
+                engine.seed()
+                engine.set_meta("bootstrapped", True)
+            if bootstrap and cfg.embedding_mode == "hash" and engine.documents() and engine.stale():
+                engine.build()
+            yield
+        finally:
+            jobs.executor.shutdown(wait=True)
+            if engine is not None:
+                engine.close()
 
     app = FastAPI(title="RAG 资料问答系统", version=__version__, lifespan=lifespan)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=["localhost", "127.0.0.1", "[::1]", "testserver"])

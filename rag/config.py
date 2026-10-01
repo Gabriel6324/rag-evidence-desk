@@ -40,6 +40,13 @@ class Config:
     @classmethod
     def from_env(cls):
         load_env(ROOT / ".env")
+        try:
+            timeout = int(os.getenv("API_TIMEOUT_SECONDS", "60"))
+        except ValueError:
+            raise UserError("API_TIMEOUT_SECONDS 必须填写 5–300 之间的整数。") from None
+        json_mode = os.getenv("LLM_JSON_MODE", "true").strip().lower()
+        if json_mode not in {"true", "false"}:
+            raise UserError("LLM_JSON_MODE 必须填写 true 或 false。")
         c = cls(
             data_dir=Path(os.getenv("RAG_DATA_DIR", str(ROOT / "data"))).resolve(),
             embedding_mode=os.getenv("RAG_EMBEDDING_MODE", "hash"),
@@ -50,10 +57,10 @@ class Config:
             llm_url=os.getenv("LLM_BASE_URL", "https://api.openai.com/v1").rstrip("/"),
             llm_key=os.getenv("LLM_API_KEY", ""),
             llm_model=os.getenv("LLM_MODEL", ""),
-            json_mode=os.getenv("LLM_JSON_MODE", "true").lower() == "true",
+            json_mode=json_mode == "true",
             qdrant_url=os.getenv("QDRANT_URL", ""),
             qdrant_key=os.getenv("QDRANT_API_KEY", ""),
-            timeout=int(os.getenv("API_TIMEOUT_SECONDS", "60")),
+            timeout=timeout,
         )
         c.validate()
         return c
@@ -75,9 +82,13 @@ class Config:
         if self.qdrant_url:
             urls.append(self.qdrant_url)
         for url in urls:
-            p = urlparse(url)
+            try:
+                p = urlparse(url)
+                port = p.port
+            except ValueError:
+                raise UserError("API 地址或端口无效，请检查 BASE_URL / QDRANT_URL。") from None
             if (p.scheme not in {"http", "https"} or not p.hostname or p.username
-                    or p.password or p.query or p.fragment):
+                    or p.password or p.query or p.fragment or port == 0):
                 raise UserError("API 地址必须为不含账号、查询参数的 HTTP(S) 地址。")
             if p.scheme == "http" and p.hostname not in {"localhost", "127.0.0.1", "::1"}:
                 raise UserError("远程模型 / Qdrant 请使用 HTTPS；HTTP 仅允许本机服务。")
