@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#1e2928">
+  <title>知据 · RAG 资料问答系统</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='11' fill='%23ba6846'/%3E%3Ctext x='8' y='28' fill='white' font-size='25'%3ER%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <a class="brand" href="/"><span class="brand-mark">知</span><span>知据<span class="brand-en">EVIDENCE DESK</span></span></a>
+    <div class="workspace-label">研究工作空间 <span>LOCAL</span></div>
+    <nav aria-label="主导航">
+      <button class="nav-item active" data-page="chat"><span class="nav-icon">◈</span>资料问答<span class="nav-count">01</span></button>
+      <button class="nav-item" data-page="library"><span class="nav-icon">▤</span>资料库<span class="nav-count" id="nav-docs">—</span></button>
+      <button class="nav-item" data-page="experiments"><span class="nav-icon">⌁</span>实验评测</button>
+      <button class="nav-item" data-page="settings"><span class="nav-icon">⚙</span>接口设置</button>
+    </nav>
+    <div class="side-note"><span class="eyebrow">从资料出发</span><p>让每个回答，<br>都能找到依据。</p><div class="tiny-rule"></div><small>检索 · 证据 · 引用</small></div>
+    <div class="side-bottom"><span class="status-dot"></span> 本机运行 <span class="version">v1.0.1</span></div>
+  </aside>
+  <main>
+    <header class="topbar"><div><span class="muted">工作空间</span><span class="slash">/</span><span id="crumb">资料问答</span></div><div class="top-pills"><span class="pill" id="mode-pill">正在连接…</span><span class="pill subtle">Qdrant</span></div></header>
+    <div id="global-alert" class="alert hidden" role="alert"></div>
+    <section id="page-chat" class="page active">
+      <div class="page-heading"><div><div class="eyebrow">ASK WITH EVIDENCE</div><h1>答案，回到资料里找。</h1><p>检索你的课程资料，查看证据，再核对结论。</p></div><button class="button secondary" id="clear-chat">＋ 新的问题</button></div>
+      <div class="stats-strip"><div><span class="stat-label">已导入资料</span><strong id="stat-docs">—</strong><small>份</small></div><div><span class="stat-label">索引片段</span><strong id="stat-chunks">—</strong><small>个</small></div><div><span class="stat-label">向量索引</span><strong class="stat-text" id="stat-index">连接中</strong></div><div><span class="stat-label">回答方式</span><strong class="stat-text" id="stat-answer">—</strong></div></div>
+      <div class="workspace-grid">
+        <div class="qa-column">
+          <div class="card ask-card">
+            <div class="card-heading"><span class="section-number">01</span><h2>提出问题</h2><span class="muted small">基于所选资料回答</span></div>
+            <form id="ask-form">
+              <label class="sr-only" for="question">问题</label><textarea id="question" maxlength="1500" rows="3" placeholder="例如：综合项目报名有哪些条件？林安的完成记录是否满足？"></textarea>
+              <div class="ask-toolbar"><label class="source-select"><span>▤</span><select id="doc-filter" aria-label="检索资料范围"><option value="">全部资料</option></select></label><span class="shortcut">Ctrl / ⌘ + Enter</span><button class="button primary" id="ask-button" type="submit">检索并回答 <span>↗</span></button></div>
+            </form>
+            <details class="retrieval-controls"><summary>检索参数 <span id="param-summary">混合检索 · top-k 5</span></summary><div class="control-grid"><label>检索方式<select id="strategy"><option value="hybrid">混合：向量 + BM25</option><option value="vector">仅向量</option></select></label><label>top-k<input id="top-k" type="number" min="1" max="12" value="5"></label><label>余弦阈值<input id="threshold" type="number" min="0" max="1" step="0.01" value="0.08"></label><label class="checkbox-label"><input id="expand" type="checkbox" checked>拆分复合问题</label></div><p class="help">阈值用于过滤低相似度片段，不代表答案置信度。</p></details>
+          </div>
+          <div id="suggestions" class="suggestions"><div class="small-label">试试这些问题 <span>内置虚构课程资料</span></div><button data-question="RRF 怎样融合 BM25 和向量检索结果？"><span>概念理解</span>RRF 怎样融合不同检索结果？<b>↗</b></button><button data-question="综合项目报名有哪些条件？林安的完成记录是否满足？"><span>跨资料证据</span>林安满足综合项目的报名条件吗？<b>↗</b></button><button data-question="明天北京天气怎么样？"><span>回答边界</span>试一个资料中没有答案的问题<b>↗</b></button></div>
+          <div id="answer-area" class="hidden" aria-live="polite"></div>
+          <div id="history" class="history"></div>
+        </div>
+        <aside class="evidence-column card"><div class="card-heading"><span class="section-number">02</span><h2>证据视图</h2><span class="counter" id="evidence-count">0</span></div><div id="evidence-list"><div class="empty-evidence"><div class="paper-stack">▤</div><h3>从来源到结论</h3><p>提出问题后，召回片段会显示在这里。<br>点击回答中的引用，定位对应原文。</p><div class="empty-steps"><span>检索</span><i>→</i><span>核验</span><i>→</i><span>引用</span></div></div></div><div class="evidence-footer">引用可追溯，不等于结论一定正确。</div></aside>
+      </div>
+    </section>
+    <section id="page-library" class="page">
+      <div class="page-heading"><div><div class="eyebrow">YOUR KNOWLEDGE BASE</div><h1>把资料整理成证据。</h1><p>导入后建立索引，保留原文位置，随时回看来源。</p></div><button class="button secondary" id="restore-samples">载入演示资料</button></div>
+      <div class="library-grid"><div class="card upload-card"><label for="file-input" class="dropzone" id="dropzone"><span class="upload-symbol">↑</span><strong>拖入资料，或点击选择文件</strong><span>PDF · DOCX · TXT · Markdown</span><small>每份不超过 10 MB；扫描 PDF 需先做 OCR</small></label><input id="file-input" class="sr-only" type="file" multiple accept=".pdf,.docx,.txt,.md"><p id="upload-status" class="help">支持多选。相同文件自动去重，导入后请重建索引。</p></div><div class="card index-card"><div class="card-heading"><h2>索引配置</h2><span class="pill" id="index-pill">—</span></div><div class="control-grid two"><label>chunk 长度 / 字符<input id="chunk-size" type="number" min="120" max="1600" value="420"></label><label>重叠 / 字符<input id="chunk-overlap" type="number" min="0" max="399" value="70"></label></div><p class="help">按章节 / 页内切分；修改长度后需重建。</p><button class="button primary full" id="rebuild">重建向量索引</button><p id="build-status" class="help" aria-live="polite"></p></div></div>
+      <div class="card document-card"><div class="card-heading"><h2>资料清单</h2><span class="muted small" id="doc-summary">—</span></div><div id="document-list"></div></div>
+    </section>
+    <section id="page-experiments" class="page">
+      <div class="page-heading"><div><div class="eyebrow">MEASURE, THEN IMPROVE</div><h1>用实验解释每一次调整。</h1><p>同一组问题，对比切分大小、召回数量与检索策略。</p></div><button class="button primary" id="run-eval">运行对照评测 ↗</button></div>
+      <div class="experiment-info card"><div><span class="small-label">评测集</span><strong>18 <small>个问题</small></strong><p>14 道有答案题 + 4 道边界题</p></div><div><span class="small-label">对照组合</span><strong>12 <small>组参数</small></strong><p>3 种 chunk × 2 种 top-k × 2 种策略</p></div><div><span class="small-label">运行方式</span><strong class="smaller">离线 · 可复现</strong><p>独立演示资料，不改动当前知识库</p></div></div>
+      <div class="callout">页面评测使用特征哈希与原文摘录。要评测真实模型，在终端运行 <code>python scripts/evaluate.py --live</code>。该选项会调用已配置的 API。</div>
+      <div class="card eval-card"><div class="card-heading"><h2>参数对照结果</h2><span id="eval-status" class="muted small">等待运行</span><div id="eval-downloads" class="download-links"></div></div><div id="eval-results" class="empty-table">运行评测后，这里会显示每组配置的证据覆盖与拒答结果。</div></div>
+      <div class="metric-notes"><div><h3>证据召回率</h3><p>每道题需要的标注证据中，有多少进入了最终上下文。</p></div><div><h3>完整证据率</h3><p>所有必要证据均被召回的题目占比，适合观察跨片段问题。</p></div><div><h3>引用原文匹配</h3><p>检查编号和原文摘录。这个指标不等同于语义支持或回答正确率。</p></div></div>
+    </section>
+    <section id="page-settings" class="page">
+      <div class="page-heading"><div><div class="eyebrow">MODEL CONNECTIONS</div><h1>接入你的模型。</h1><p>密钥保存在本机配置文件中，页面只显示当前运行模式。</p></div></div>
+      <div class="settings-grid"><div class="card settings-card"><h2>当前连接</h2><dl id="connection-info"></dl><div class="callout compact">默认演示使用词面特征哈希和原文摘录，不是语义模型与大模型推理。</div></div><div class="card settings-card"><h2>启用语义检索与生成</h2><ol class="setup-steps"><li>将项目根目录的 <code>.env.example</code> 复制为 <code>.env</code>。</li><li>填写 Embedding 与 LLM 的地址、模型名和 API Key。两者可以来自不同服务商。</li><li>设定 <code>RAG_EMBEDDING_MODE=api</code> 和 <code>RAG_ANSWER_MODE=llm</code>。</li><li>重启服务，然后在资料库中重建索引。</li></ol><p class="help">使用兼容 /embeddings 与 /chat/completions 的接口。配置后，资料片段和问题会发送至所填服务。费用由服务商计收。</p></div></div>
+      <div class="card architecture-card"><h2>这套系统如何工作</h2><div class="pipeline"><span>资料提取<small>页码 / 章节</small></span><b>→</b><span>切分与向量化<small>Embeddings</small></span><b>→</b><span>混合检索<small>Qdrant + BM25</small></span><b>→</b><span>回答与核验<small>原文引用</small></span></div><p class="help">系统目前面向本机单用户使用。边界说明、评测方法和代码结构见压缩包中的 README 与 docs。</p></div>
+    </section>
+    <footer class="main-footer"><span>知据 · RAG 资料问答系统</span><span>让结论可以被核对</span></footer>
+  </main>
+</div>
+<dialog id="source-dialog"><div class="dialog-heading"><h2 id="source-title">原文</h2><button class="icon-button" id="close-source" aria-label="关闭原文">×</button></div><div id="source-content"></div></dialog>
+<div id="toast" class="toast hidden" role="status"></div>
+</body>
+</html>
