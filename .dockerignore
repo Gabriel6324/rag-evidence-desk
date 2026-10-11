@@ -1,0 +1,15 @@
+.git
+.venv
+venv
+__pycache__
+*.pyc
+.env
+.env.*
+!.env.example
+data
+logs
+diagnostics
+dist
+qa-browser
+reports/live
+reports/custom

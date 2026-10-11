@@ -1,219 +1,113 @@
-# 知据 · RAG 资料问答系统
+# 知据 · Evidence Desk
 
-面向课程讲义和作业资料的检索问答应用。上传文档后，可以提问、查看召回片段，并从回答中的引用回到原文。检索和回答是分开处理的，便于检查问题出在资料切分、证据召回还是模型生成。
+把资料放进去，用自然语言提问，再从回答中的引用回到原文。知据是运行在本机的资料问答工作台，适合查阅课程讲义、项目说明、制度和操作手册。它根据导入的资料回答，不会自动搜索互联网。
 
-**Python · FastAPI · Qdrant · Embeddings · BM25 · RRF · LLM API**
+例如，导入报销规定后问“住宿上限是多少，需要什么证明？”，查看回答，再点击 E1、E2 核对原文。首次打开已准备 5 份虚构演示资料，没有 API Key 也能体验检索、引用与工具流程。
 
-项目主要关注两件事：跨资料问题需要的证据能否完整召回，以及资料不充分时回答能否保持合理边界。仓库包含 18 道标注题、参数对照脚本和逐题实验记录。
+当前版本：**1.2.1**。技术栈：Python、FastAPI、LangGraph、Qdrant、SQLite、原生 JavaScript。
 
-![问答工作台](docs/screenshots/01_home.png)
+## 开始使用
 
-[API 配置](#连接模型-api) · [评测与复现](#评测与复现) · [技术说明](docs/技术与评测说明.md) · [实验记录](reports/evaluation.md)
+### Windows 运行包
 
-## 功能
+完整解压 `ZhiJuEvidenceDesk-v1.2.1-Windows-x64.zip`，双击 `ZhiJuEvidenceDesk.exe`。工作台就绪后会自动在浏览器打开；保留启动窗口，关闭它会停止服务。不要只移动 EXE，旁边的 `runtime`、`rag`、`web`、`samples` 和 `eval` 都需要保留。
 
-- 导入 TXT、Markdown、含文字的 PDF 和 DOCX；保留页码、章节或段落位置，DOCX 的段落与表格按原文顺序提取。
-- 使用 Qdrant 保存向量，支持向量检索、BM25 / RRF 混合检索、资料范围过滤和规则式问题拆分。
-- 调整 chunk、overlap、top-k 和相似度阈值，观察证据覆盖的变化。
-- 校验回答中的引用编号和逐字引文，点击引用查看原文，导出问答记录。
-- 检查资料与索引是否一致；重建失败时回滚元数据并保留原有索引，启动时核对活动集合是否存在。
-- 文档和向量缓存写入失败时回滚；首次启动失败会释放数据库资源，可以修正配置后重新启动。
-- 比较不同检索参数，输出 JSON、CSV 和 Markdown 评测报告。
+启动窗口的“配置模型接口”和工作台内的“接口设置”使用同一份配置。没有 Key 可以直接用默认演示；需要真实 AI 时再连接自己的模型。
 
-## 本地启动
+### 源码运行
 
-当前版本为 **1.0.1**，包含端口自动切换和服务就绪后打开浏览器的修复。需要 Python 3.10 及以上版本，推荐 3.12。
+推荐 Python 3.12，支持 Python 3.10 及以上。Windows 双击 `启动.bat`，macOS 双击 `启动.command`，Linux 执行 `bash start.sh`；启动脚本会创建虚拟环境并安装依赖。
 
-下载后完整解压，进入项目目录。Windows 可以双击 `启动.bat`；macOS 在终端执行 `bash 启动.command`；Linux 执行 `bash start.sh`。首次运行会创建 `.venv` 并安装依赖。
-
-macOS 如需双击启动，先在项目目录执行一次 `chmod +x 启动.command`，赋予脚本执行权限，再双击。直接执行 `bash 启动.command` 不需要这一步。
-
-也可以手动运行：
+也可以手动安装：
 
 ```bash
 python -m venv .venv
-```
-
-Windows PowerShell：
-
-```powershell
-.\.venv\Scripts\Activate.ps1
-```
-
-macOS / Linux：
-
-```bash
-source .venv/bin/activate
-```
-
-安装并启动：
-
-```bash
+# Windows: .venv\Scripts\activate
+# macOS / Linux: source .venv/bin/activate
 python -m pip install -r requirements.txt
 python run.py
 ```
 
-浏览器地址以终端 `Open:` 后显示的地址为准。默认端口是 8765，被占用时自动换端口；`python run.py --port 0` 可以直接申请空闲端口。关闭服务时在终端按 Ctrl+C。
+地址以终端的 `Open:` 为准。默认端口占用时自动换端口；用 `python run.py --port 0` 自动选择端口，用 Ctrl+C 关闭。已安装 Tk 的 Python 也可运行 `python desktop.py`，打开原生启动窗口。
 
-首次启动会导入 5 份虚构课程资料并建立本地索引，无需 Docker 或 API Key。依赖安装完成后，默认模式可以离线使用。
+## 四个页面怎样用
 
-## 运行模式
-
-| 配置 | 向量来源 | 回答方式 |
+| 页面 | 用途 | 第一次可以这样做 |
 | --- | --- | --- |
-| `hash` + `extractive`，默认 | 中文二字组 / 英文词项特征哈希 | 摘录相关原文 |
-| `hash` + `llm` | 本地特征哈希 | 模型根据召回证据生成回答 |
-| `api` + `llm` | Embedding API 语义向量 | 模型根据召回证据生成回答 |
+| 资料问答 | 提问、追问、看引用与原文 | 点击示例问题，再点击 E1 引用 |
+| 资料库 | 导入/移除资料、调整切分并建立索引 | 拖入 PDF、DOCX、TXT 或 Markdown，等自动索引完成 |
+| 实验评测 | 比较检索设置和两项优化 | 可跳过；需要调参时先读“？”说明 |
+| 接口设置 | 连接自己的模型、测试、保存及查看 MCP 地址 | 先读三个模型介绍，按字段旁的“？”填写 |
 
-默认模式用于跑通流程和复现基线，不具备大模型推理能力。需要自行配置API Key，这个是个人的，我不提供。
+每份资料不超过 10 MB。PDF 需要有可提取的文字，扫描件先做 OCR；DOCX 使用段落和表格位置，不对应 Word 页码。导入后默认自动索引；修改资料、切分参数或向量模型后重新建立索引。
 
-## 连接模型 API
+RAG 做一轮检索后回答；Agent 使用 LangGraph 分步检索和查阅原文，最多 4 轮决策、6 次只读工具调用。默认 Agent 使用规则演示；由模型决定步骤需要接入支持工具调用的对话模型。
 
-**API Key 填在项目根目录的 `.env` 文件中。网页的“接口设置”只展示当前配置，不负责保存密钥。**
+会话和当时的证据保存在本机，可以从会话列表恢复；回答和运行详情可以导出。运行详情展示步骤耗时、向量缓存、重排结果和服务商实际返回的 token 用量。
 
-### 1. 创建配置文件
+## 连接自己的模型
 
-第一次配置时，将 `.env.example` 复制为 `.env`。已有 `.env` 时直接编辑原文件。
+直接在界面填写、测试并“保存并应用”，不必编辑文件。Windows 启动窗口会自动重启服务，资料和会话保留；源码命令行启动时设置立即生效。
 
-Windows PowerShell：
-
-```powershell
-Copy-Item .env.example .env
-notepad .env
-```
-
-macOS / Linux：
-
-```bash
-cp .env.example .env
-```
-
-用文本编辑器打开 `.env`。Windows 下确认文件名是 `.env`，不是 `.env.txt`。
-
-### 2. 准备密钥和模型名
-
-系统对接 OpenAI 兼容接口，使用两个独立配置：
-
-| 用途 | 请求路径 | 环境变量前缀 |
+| 模型 | 作用 | 是否需要 |
 | --- | --- | --- |
-| 将资料和问题转换为向量 | `POST /embeddings` | `EMBEDDING_` |
-| 根据证据生成回答 | `POST /chat/completions` | `LLM_` |
+| 对话模型 / LLM | 读问题与证据，组织回答；支持工具调用时可规划 Agent 步骤 | 使用真实 AI 回答时配置 |
+| 向量模型 / Embedding | 把文字转成向量，按含义找相关段落 | 可选；不配时使用本机词面特征哈希 |
+| 重排模型 / Rerank | 重新排列候选证据，把更有用的放前面 | 可选；不配时保留原检索顺序 |
 
-以硅基流动为例，在控制台的 API 密钥页面创建密钥，再从模型列表复制模型 ID。对话模型要能够返回 JSON；Embedding 要选择文本嵌入模型。两者使用同一服务商时可以填写同一把密钥，也可以分别接入不同服务商。
+从对应服务平台的 API 控制台取得基础地址、模型 ID 和调用密钥。三类可以来自不同平台。Key 是调用凭证；留空会保留已保存的 Key，显示按钮只显示本次输入，“清除已保存 Key”需保存后生效。字段和操作旁都有独立的获取及填写说明。
 
-配置示例：
+这个是个人的，我不提供。
 
-```dotenv
-RAG_EMBEDDING_MODE=api
-RAG_ANSWER_MODE=llm
+地址填兼容 API 的基础地址，不加完整 `/chat/completions`、`/embeddings` 或 `/rerank` 路径。软件支持相应的聊天、向量和重排接口格式，具体模型可用性、权限和价格以服务商控制台为准。测试只发送固定短文本；真实索引、问答和重排会发送必要资料片段，费用由对应平台计收。
 
-EMBEDDING_BASE_URL=https://api.siliconflow.cn/v1
-EMBEDDING_API_KEY=YOUR_API_KEY
-EMBEDDING_MODEL=BAAI/bge-m3
+Key 保存在本机配置中，不向网页回填。配置文件是本机文本文件，请按本机文件权限保护；这里没有云端密钥保险箱。
 
-LLM_BASE_URL=https://api.siliconflow.cn/v1
-LLM_API_KEY=YOUR_API_KEY
-LLM_MODEL=YOUR_CHAT_MODEL_ID
-LLM_JSON_MODE=true
-API_TIMEOUT_SECONDS=60
+高级用户仍可参考 [.env.example](.env.example)；系统环境变量优先于配置文件。`QDRANT_URL` 留空使用本地向量库，无需 Docker；变更数据库位置属于部署配置，建议在关闭服务后操作。
 
-QDRANT_URL=
-QDRANT_API_KEY=
-```
+## 遇到失败
 
-将 `YOUR_API_KEY` 换成自己的密钥，将 `YOUR_CHAT_MODEL_ID` 换成控制台可用的对话模型 ID。`BAAI/bge-m3` 是嵌入模型示例，实际可用模型和价格以服务商控制台为准。
+提醒显示失败操作和步骤。右侧“查看原因与解决方法”根据实际错误分别提供引导，包括接口状态码、超时、文件权限、文件占用、解析、索引、数据库、Agent 和评测问题。
 
-填写时注意：
+提醒会跨页面保留；点 X 后关闭同一条，新失败仍会显示。详情可复制或下载，诊断会遮挡密钥；未知错误会明确说明原因尚未确定。不要把所有失败都当成 Key 或 Qdrant 配置问题。
 
-- `BASE_URL` 填接口前缀，例如 `https://api.siliconflow.cn/v1`，不要再加 `/embeddings` 或 `/chat/completions`。
-- Key 只填密钥本身，不加 `Bearer`，不在同一行末尾写注释。
-- 如果只有对话 API，可以先保留 `RAG_EMBEDDING_MODE=hash`，只设置 `RAG_ANSWER_MODE=llm` 和 `LLM_` 配置；此时检索仍使用本地词面特征。
-- `QDRANT_URL` 留空即使用本地向量库，不需要购买云数据库。
-- 不支持 `response_format` 的服务可尝试 `LLM_JSON_MODE=false`，但模型仍必须按提示返回 JSON。不能把普通自由文本回答直接用于当前适配器。
-- 操作系统环境变量优先于 `.env`。如果改了文件但配置没变，检查终端中是否设置过同名变量。
+## 实验评测
 
-参考：[创建 API Key](https://docs.siliconflow.cn/docs/userguide/quickstart)、[对话接口与 JSON 输出](https://docs.siliconflow.cn/docs/userguide/capabilities/text-generation)、[Embedding 接口](https://api-docs.siliconflow.cn/docs/api/embeddings-post)。
+| 按钮 | 比较什么 | 是否调用外部模型 |
+| --- | --- | --- |
+| 运行对照评测 | 3 种切分长度 × 2 种 top-k × 2 种检索方式，共 12 组 | 否 |
+| 运行优化前后对比 | 原始、术语补召回、证据筛选、两项同时启用，共 4 组 | 否 |
+| 运行真实模型评测 | 使用当前配置，比较向量与混合检索，共 2 组 | 需要明确确认，可能计费 |
 
-### 3. 重启、重建索引并验证
+每组使用相同的 18 道内置题，其中 14 道有证据、4 道应拒答。评测使用隔离环境，不改动日常资料库。完整证据率表示是否找全标注原文；引文匹配率检查摘录是否出现在原文中，均不能直接解释为业务回答准确率。
 
-1. 保存 `.env`，在原终端按 Ctrl+C 停止服务，再运行 `python run.py` 或启动脚本。
-2. 打开“接口设置”，确认 Embedding 和回答模型显示的是所配置的模型名。
-3. 切换 Embedding 模式、模型或地址后，在“资料库”点击“重建向量索引”。只更换 LLM 不需要重建。
-4. 提问“RRF 怎样融合不同检索结果？”，检查回答、证据卡片和可点击引用是否正常显示。
-
-接入外部 API 后，建索引会发送资料文本，问答会发送问题和召回片段。首次索引及后续调用可能产生服务商费用。仓库不附带密钥；接口处理和引用校验有模拟接口测试，尚未附带付费模型的实连评测结果。
-
-### 常见配置问题
-
-| 现象 | 检查方式 |
-| --- | --- |
-| 仍显示“原文摘录” | 确认 `RAG_ANSWER_MODE=llm`，保存后重启服务 |
-| HTTP 401 / 403 | 检查对应服务商的 Key、账户权限和模型权限 |
-| HTTP 404 | 检查模型 ID、BASE_URL，以及是否重复填写了接口路径 |
-| HTTP 429 | 检查额度和调用频率，稍后再试 |
-| 请求超时 | 检查网络；可将 `API_TIMEOUT_SECONDS` 改成 120，允许范围为 5–300 |
-| 模型未返回有效 JSON | 换用支持 JSON 输出的模型，或按服务商文档调整 `LLM_JSON_MODE` |
-| 引用编号或引文与原文不符 | 接口已返回，但内容没有通过引用校验；查看证据是否充分，再调整问题、top-k 或模型 |
-| 提示索引过期 | 在资料库重建索引；不要混用不同 Embedding 模型的向量 |
-
-## 评测与复现
+[技术与指标定义](docs/技术与评测说明.md) · [12 组记录](reports/evaluation.md) · [四组消融](reports/ablation.md)
 
 ```bash
 python -m unittest discover -s tests -v
 python scripts/evaluate.py
+python scripts/evaluate.py --ablation --out reports
 ```
 
-默认评测使用独立临时 Qdrant 和内置资料，不修改日常知识库，也不调用外部模型。对照参数为 chunk 240 / 420 / 700 字符、top-k 3 / 5、vector / hybrid，共 12 组 × 18 道题。overlap 固定 60 字符，余弦阈值为 0.08。
+自定义数据：`python scripts/evaluate.py --samples my_samples --dataset my_questions.json --out reports/custom`。
 
-GitHub Actions 在 Python 3.12 下执行测试，覆盖文档顺序、检索和引用、文档与缓存写入失败恢复、索引回滚、异常模型返回和启动流程。API 向量使用稳定的归一化计算，避免极大或极小数值变成零向量。模型测试使用模拟接口。
+真实模型：`python scripts/evaluate.py --live --sizes 420 --top-k 5 --strategies hybrid --out reports/live`。`--live` 表示同意调用当前配置的 API，可能产生费用；仓库没有附带付费模型质量评测。
 
-更多参数对照：
+## 连接其他 AI 工具
 
-```bash
-python scripts/evaluate.py --sizes 240 420 700 --top-k 1 3 5 --thresholds 0.06 0.12 --out reports/sweep
-python scripts/evaluate.py --no-expand --out reports/no_expand
-```
+接口设置中的 MCP 地址可添加到同一台电脑上支持 Streamable HTTP 的客户端，保持知据运行。提供 `list_documents`、`search_documents`、`read_source` 三个只读工具，不提供修改资料或读取 Key 的工具。客户端的具体配置方式以其文档为准。
 
-使用自定义资料和标注集：
+## 开发、构建与数据
 
-```bash
-python scripts/evaluate.py --samples ./my_samples --dataset ./my_questions.json --out reports/custom
-```
+- [技术说明](docs/技术与评测说明.md)：检索、Agent、会话、引用、边界与指标。
+- [构建说明](docs/构建与验证.md)：源码包、Windows 包、容器和自动检查。
+- `rag/`：后端；`web/`：工作台；`desktop*.py`：启动及原生配置/帮助；`tests/`：自动测试。
+- `samples/` 和 `eval/`：虚构资料与人工标注；`reports/`：内置离线评测记录。
 
-自定义评测会先检查题目结构、唯一 ID 和证据标注。`source` 必须对应所导入的文件，非空 `quote` 必须出现在该文件的一个提取文本单元内；缺失或空白标注会报错，避免把无效标注计入命中率。
+Windows 运行包的数据和配置默认在 `%LOCALAPPDATA%\ZhiJuEvidenceDesk`，重新解压升级会保留它们；源码默认在项目目录，可通过 `RAG_CONFIG_DIR`、`RAG_DATA_DIR` 分离。备份或迁移前先关闭服务。同一个本地 Qdrant 目录同时只打开一个实例。
 
-确认 `.env` 配置有效后，可以运行实连模型评测：
-
-```bash
-python scripts/evaluate.py --live --sizes 420 --top-k 5 --strategies hybrid --out reports/live
-```
-
-`--live` 会调用外部 API。仓库已有的 [评测记录](reports/evaluation.md) 来自默认模式下的小规模合成资料；证据召回、完整证据率和拒答率分别统计，不能用引用格式通过率代替答案准确率。指标定义见 [技术与评测说明](docs/技术与评测说明.md)。
-
-## 代码结构
-
-| 路径 | 内容 |
-| --- | --- |
-| `rag/documents.py` | 文档解析、切分、原文位置和可疑片段标记 |
-| `rag/models.py` | 向量缓存、模型 HTTP 接口、提示词和引用校验 |
-| `rag/engine.py` | Qdrant 索引、BM25 / RRF、资料管理和问答编排 |
-| `rag/evaluation.py` | 问题—证据标注匹配、参数对照和报告导出 |
-| `rag/app.py` | FastAPI 接口和本机访问约束 |
-| `web/` | HTML / CSS / JavaScript 界面 |
-| `samples/`、`eval/` | 虚构演示资料与标注集 |
-| `tests/` | 文档、检索、引用、API 适配和启动测试 |
-| `docs/`、`reports/` | 技术说明、界面截图和实验记录 |
-
-## 当前限制
-
-- 扫描版 PDF 需要先 OCR；DOCX 使用段落和表格位置，不还原 Word 页码。
-- 默认摘录模式可能把相关资料误当成充分答案。例如询问资料中未提供的个人信息时，可能返回姓名相关的其他记录。
-- 引用校验能检查来源和逐字引文，不能证明结论在逻辑上成立。复杂条件推理仍需人工评审。
-- 提示注入筛查基于部分已知模式，覆盖范围有限。
-- 目前面向本机单用户，单文件上限 10 MB，未实现多用户账号和公网部署。
-
-运行数据保存在 `data/`，`.env` 和 `data/` 均已加入忽略规则。Qdrant 本地模式不能由多个进程同时打开同一数据目录；需要清空实验数据时，先关闭服务，再移走或删除 `data/`。
+系统面向本机单用户，引用校验不能证明推理成立，提示注入筛查也只覆盖已知模式。真实模型能力需要另行评测。当前交付的 Windows 包需要实机验收；构建环境验证与真实 Windows 运行分别记录。
 
 ## 许可证
 
-本项目采用 [MIT License](LICENSE)。第三方依赖遵循各自的许可证。
+[MIT License](LICENSE)。第三方依赖遵循各自许可证。

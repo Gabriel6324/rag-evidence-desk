@@ -22,3 +22,6 @@ reports/live/
 reports/custom/
 reports/sweep/
 reports/no_expand/
+
+dist/
+qa-browser/
