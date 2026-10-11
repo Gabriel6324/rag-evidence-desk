@@ -18,6 +18,10 @@ from . import __version__
 from .config import Config, ROOT, UserError
 from .documents import extract, safe_name, chunk_units, SUSPICIOUS
 from .models import Embeddings, tokens, generate
+from .context import resolve_question, pack_evidence
+from .sessions import SessionStore
+from .telemetry import RunTrace
+from .reranking import rerank as apply_rerank
 
 
 def now():
@@ -49,14 +53,22 @@ class Engine:
         CREATE TABLE IF NOT EXISTS docs (id TEXT PRIMARY KEY, name TEXT, sha TEXT UNIQUE, units TEXT, chars INTEGER, created TEXT);
         CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
         """)
+        self.sessions = SessionStore(self.db)
         if self.meta("workspace") is None:
             self.set_meta("workspace", uuid.uuid4().hex[:12])
             self.set_meta("revision", 0)
         self.embedder = Embeddings(config)
-        if config.qdrant_url:
-            self.qdrant = QdrantClient(url=config.qdrant_url, api_key=config.qdrant_key or None, timeout=config.timeout)
-        else:
-            self.qdrant = QdrantClient(path=str(config.data_dir / "qdrant"))
+        try:
+            if config.qdrant_url:
+                self.qdrant = QdrantClient(url=config.qdrant_url, api_key=config.qdrant_key or None, timeout=config.timeout)
+            elif config.qdrant_memory:
+                self.qdrant = QdrantClient(":memory:")
+            else:
+                self.qdrant = QdrantClient(path=str(config.data_dir / "qdrant"))
+        except Exception:
+            self.embedder.close()
+            self.db.close()
+            raise
         self.active = self.meta("active")
         self.collection_available = bool(
             self.active and self.active.get("collection") and
@@ -158,6 +170,7 @@ class Engine:
             dim = len(vectors[0])
             collection = f"rag_{self.meta('workspace')}_{uuid.uuid4().hex[:12]}"
             try:
+                progress("创建新的向量索引集合…")
                 self.qdrant.create_collection(collection, vectors_config=models.VectorParams(size=dim, distance=models.Distance.COSINE))
                 for start in range(0, len(chunks), 64):
                     progress(f"正在写入 Qdrant：{min(start + 64, len(chunks))}/{len(chunks)}")
@@ -170,10 +183,11 @@ class Engine:
                           "blocked_count": sum(c["blocked"] for c in chunks), "built_at": now(), "chunks": chunks,
                           "build_ms": round((time.perf_counter() - started) * 1000)}
                 # Only publish after all writes succeed. A failure preserves the previous active index.
+                progress("保存新索引清单…")
                 self.set_meta("active", active)
             except Exception:
                 try:
-                    self.qdrant.delete_collection(collection)
+                    self._drop_collection(collection)
                 except Exception:
                     pass
                 raise
@@ -183,7 +197,7 @@ class Engine:
             self._prepare_bm25()
             if old and old.get("storage_fingerprint") == self.config.storage_fingerprint:
                 try:
-                    self.qdrant.delete_collection(old["collection"])
+                    self._drop_collection(old["collection"])
                 except Exception:
                     pass  # Orphan collections are harmless; never delete another workspace's data.
             progress("索引已就绪")
@@ -209,7 +223,7 @@ class Engine:
                 result.append((i, score))
         return sorted(result, key=lambda x: (-x[1], x[0]))
 
-    def retrieve(self, question, top_k=5, strategy="hybrid", threshold=.08, expand=True, doc_ids=None):
+    def retrieve(self, question, top_k=5, strategy="hybrid", threshold=.08, expand=True, doc_ids=None, _candidate_k=None, lexical_rescue=True):
         with self.lock:
             if self.stale():
                 raise UserError("资料或向量配置已变化，请先重建索引，避免查询旧资料。")
@@ -220,11 +234,12 @@ class Engine:
             if not eligible:
                 return [], subqueries(question, expand)
             queries = subqueries(question, expand)
+            selection_k = min(36, max(top_k, _candidate_k or top_k))
             vectors = self.embedder.embed(queries)
             if len(vectors[0]) != self.active["dimension"]:
                 raise UserError("查询向量维度与索引不一致，请重建索引。")
             rrf, cosines, lexical = defaultdict(float), defaultdict(lambda: -1.0), defaultdict(float)
-            limit = min(max(top_k * 5, 30), len(eligible))
+            limit = min(max(selection_k * 5, 30), len(eligible))
             conditions = [models.FieldCondition(key="blocked", match=models.MatchValue(value=False))]
             if selected:
                 conditions.append(models.FieldCondition(key="doc_id", match=models.MatchAny(any=list(selected))))
@@ -248,9 +263,12 @@ class Engine:
                             cosines[i] = max(cosines[i], float(np.dot(vector, ev)))
             order = sorted(rrf, key=lambda i: (-rrf[i], -cosines[i], i))
             evidence = []
+            identifiers = {t for t in tokens(question) if re.fullmatch(r"[a-z][a-z0-9_]{2,}", t)}
             for i in order:
                 c = self.chunks[i]
-                if cosines[i] < threshold:
+                exact_term = bool(lexical_rescue and strategy == "hybrid" and identifiers and lexical[i] > 0
+                                  and identifiers.issubset(set(tokens(c["text"]))))
+                if cosines[i] < threshold and not exact_term:
                     continue
                 # Remove near-duplicate overlapping chunks while retaining independent evidence.
                 duplicate = False
@@ -262,33 +280,93 @@ class Engine:
                 if duplicate:
                     continue
                 evidence.append({**c, "id": f"E{len(evidence) + 1}", "cosine": round(cosines[i], 4),
-                                 "rrf": round(rrf[i], 6), "bm25": round(lexical[i], 4)})
-                if len(evidence) == top_k:
+                                 "rrf": round(rrf[i], 6), "bm25": round(lexical[i], 4),
+                                 "lexical_rescue": bool(exact_term and cosines[i] < threshold)})
+                if len(evidence) == selection_k:
                     break
             return evidence, queries
 
-    def ask(self, question, **options):
+    def search(self, question, rerank=False, **options):
+        k = options.get("top_k", 5)
+        evidence, queries = self.retrieve(question, _candidate_k=min(36, k * 3) if rerank else k, **options)
+        meta = {"applied": False, "candidate_count": len(evidence), "duration_ms": 0}
+        if rerank:
+            evidence, meta = apply_rerank(self.config, question, evidence, k)
+        return evidence, queries, meta
+
+    def ask(self, question, workflow="rag", session_id=None, rerank=False, context_chars=9000, answer_guard=True,
+            progress=lambda message: None, **options):
         question = question.strip()
         if not question or len(question) > 1500:
             raise UserError("请输入 1–1500 字的问题。")
+        if workflow not in {"rag", "agent"} or type(context_chars) is not int or not 1200 <= context_chars <= 24000:
+            raise UserError("问答流程或证据预算无效。")
         with self.lock:
-            started = time.perf_counter()
-            if SUSPICIOUS.search(question):
-                return {"question": question, "status": "insufficient", "claims": [], "missing": ["此问题包含改变系统规则或索取密钥的指令，未执行。"],
-                        "verified_quotes": 0, "evidence": [], "queries": [question], "timing": {"retrieval_ms": 0, "total_ms": 0},
-                        "mode": self.config.answer_mode, "notice": "规则筛查只覆盖部分已知模式。"}
-            evidence, queries = self.retrieve(question, **options)
-            retrieved = time.perf_counter()
-            weights = {t: math.log(1 + (len(self.chunks) + .5) / (self.df[t] + .5)) for t in set(tokens(question))}
-            result = generate(self.config, question, evidence, term_weights=weights)
-            return {**result, "question": question, "evidence": evidence, "queries": queries,
-                    "mode": self.config.answer_mode,
-                    "notice": ("当前为原文摘录模式，不进行跨资料推理；摘录可能只覆盖部分问题。" if self.config.answer_mode == "extractive" else
-                               "已核验引用编号与引文匹配；结论是否由证据充分支持仍需人工核对。"),
-                    "timing": {"retrieval_ms": round((retrieved - started) * 1000, 1), "total_ms": round((time.perf_counter() - started) * 1000, 1)}}
+            trace = RunTrace(workflow, progress)
+            try:
+                with trace.capture():
+                    with trace.stage("context", "正在读取会话上下文…") as step:
+                        history, history_chars = self.sessions.context(session_id, self.meta("revision"), options.get("doc_ids"),
+                                                                       self.config.embedding_fingerprint)
+                        resolved = resolve_question(question, history)
+                        step.update(turns=len(history), used_chars=history_chars)
+                    if SUSPICIOUS.search(question):
+                        response = {"status": "insufficient", "claims": [], "missing": ["此问题包含改变系统规则或索取密钥的指令，未执行。"],
+                                    "verified_quotes": 0, "evidence": [], "queries": [question], "context": {},
+                                    "retrieval": {}, "termination": "question_filter"}
+                    elif workflow == "agent":
+                        from .agent import EvidenceAgent
+                        response = EvidenceAgent(self, trace, question, resolved, history, options, rerank, context_chars, answer_guard).run()
+                    else:
+                        with trace.stage("retrieve", "正在进行证据检索…") as step:
+                            evidence, queries, ranking = self.search(resolved, rerank=rerank, **options)
+                            step.update(candidate_count=ranking["candidate_count"], returned_count=len(evidence),
+                                        rerank_applied=ranking["applied"], rerank_ms=ranking["duration_ms"])
+                            if ranking.get("warning"):
+                                step["warning"] = ranking["warning"]
+                        with trace.stage("pack", "正在整理回答证据…") as step:
+                            evidence, context = pack_evidence(evidence, context_chars)
+                            step.update(context)
+                        with trace.stage("answer", "正在生成回答并校验引用…"):
+                            effective = resolved if self.config.answer_mode == "extractive" else question
+                            weights = {t: math.log(1 + (len(self.chunks) + .5) / (self.df[t] + .5)) for t in set(tokens(effective))}
+                            result = generate(self.config, effective, evidence, term_weights=weights, conversation=history, answer_guard=answer_guard)
+                        response = {**result, "evidence": evidence, "queries": queries, "retrieval": ranking,
+                                    "context": context, "termination": "completed"}
+                    record = trace.finish(termination=response["termination"])
+                    notice = ("当前为原文摘录模式，不进行跨资料推理；摘录可能只覆盖部分问题。" if self.config.answer_mode == "extractive" else
+                              "已核验引用编号与引文匹配；结论是否由证据充分支持仍需人工核对。")
+                    if workflow == "agent" and self.config.answer_mode == "extractive":
+                        notice = "当前为规则工具流程演示，未进行模型自主决策。" + notice
+                    response.update(question=question, mode=self.config.answer_mode, workflow=workflow, notice=notice,
+                                    session_id=session_id, trace=record, index_fingerprint=self.config.embedding_fingerprint,
+                                    retrieval_question=resolved,
+                                    timing={"retrieval_ms": round(sum(s["duration_ms"] for s in record["steps"] if s["name"] in {"retrieve", "tool"}), 1),
+                                            "total_ms": record["total_ms"]})
+                    self.sessions.save_trace(record)
+                    if session_id:
+                        self.sessions.append(session_id, self.meta("revision"), options.get("doc_ids"), response)
+                    return response
+            except Exception as error:
+                self.sessions.save_trace(trace.finish("error", error_type=type(error).__name__))
+                raise
+
+    def _drop_collection(self, name):
+        # qdrant-client's local delete can discard a collection without closing
+        # its SQLite connection. Windows then keeps storage.sqlite locked.
+        if not self.config.qdrant_url:
+            local = getattr(self.qdrant, "_client", None)
+            collection = getattr(local, "collections", {}).get(name)
+            if collection is not None:
+                collection.close()
+        self.qdrant.delete_collection(name)
 
     def close(self):
         with self.lock:
-            self.embedder.close()
-            self.qdrant.close()
-            self.db.close()
+            try:
+                self.embedder.close()
+            finally:
+                try:
+                    self.qdrant.close()
+                finally:
+                    self.db.close()

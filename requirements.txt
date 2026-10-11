@@ -6,5 +6,7 @@ httpx[socks]==0.28.1
 python-multipart==0.0.32
 pypdf==6.10.0
 python-docx==1.2.0
+langgraph==1.2.14
+mcp==2.3.0
 numpy==2.3.5; python_version >= '3.11'
 numpy==2.2.6; python_version < '3.11'

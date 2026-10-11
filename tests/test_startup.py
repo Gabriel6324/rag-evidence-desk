@@ -116,7 +116,8 @@ class StartupTests(unittest.TestCase):
                 opener = build_opener(ProxyHandler({}))
                 with opener.open(url + '/api/status', timeout=5) as response:
                     self.assertEqual(response.status, 200)
-                    self.assertIn(b'1.0.1', response.read())
+                    from rag import __version__
+                    self.assertIn(__version__.encode(), response.read())
                 self.assertIn('READY', ''.join(output))
                 self.assertIn('trying another local port', ''.join(output))
             finally:

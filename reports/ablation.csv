@@ -1,0 +1,5 @@
+﻿size,top_k,strategy,threshold,chunks,variant,lexical_rescue,answer_guard,hit_at_k,evidence_recall,all_evidence_at_k,mrr,multi_all_evidence,citation_id_valid_rate,quote_match_rate,quote_count,refusal_rate_on_unanswerable,keyword_coverage,answered_on_answerable,refused_answerable_count,mean_latency_ms
+240,3,hybrid,0.08,29,原始策略,False,False,0.9286,0.9286,0.9286,0.8214,1.0,1.0,1.0,28,0.5,0.6905,0.9286,1,5.3
+240,3,hybrid,0.08,29,仅术语补召回,True,False,1.0,1.0,1.0,0.8929,1.0,1.0,1.0,30,0.5,0.7619,1.0,0,5.4
+240,3,hybrid,0.08,29,仅证据筛选,False,True,0.9286,0.9286,0.9286,0.8214,1.0,1.0,1.0,24,1.0,0.6905,0.9286,1,5.4
+240,3,hybrid,0.08,29,两项优化,True,True,1.0,1.0,1.0,0.8929,1.0,1.0,1.0,26,1.0,0.7619,1.0,0,5.6
