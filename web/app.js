@@ -170,7 +170,13 @@ function renderEvaluationCard(record,prepend=false,expand=false){
 }
 async function loadEvaluations(more=false){
   if(state.evaluationLoading)return;state.evaluationLoading=true;updateEvaluationControls();
-  try{const data=await api('/evaluations?offset='+(more?state.evaluations.size:0)+'&limit=20');if(!more){state.evaluations.clear();$('evaluation-history').replaceChildren();}state.evaluationTotal=data.total;data.items.forEach((record,i)=>renderEvaluationCard(record,false,!more&&i===0));for(const record of data.items.filter(r=>r.state==='running'))resumeEvaluation(record);}
+  try{let data=await api('/evaluations?offset='+(more?state.evaluations.size:0)+'&limit=20');
+    if(more&&(data.total!==state.evaluationTotal||data.items.some(record=>state.evaluations.has(record.id)))){
+      // Another tab can insert a new run ahead of this offset. Start a fresh
+      // page instead of looping over duplicates and skipping unseen records.
+      data=await api('/evaluations?offset=0&limit=20');more=false;toast('评测记录已有更新，已载入最新记录。请继续加载更早的评测。');
+    }
+    if(!more){state.evaluations.clear();$('evaluation-history').replaceChildren();}state.evaluationTotal=data.total;data.items.forEach((record,i)=>renderEvaluationCard(record,false,!more&&i===0));for(const record of data.items.filter(r=>r.state==='running'))resumeEvaluation(record);}
   finally{state.evaluationLoading=false;updateEvaluationControls();}
 }
 async function resumeEvaluation(record){

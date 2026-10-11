@@ -24,4 +24,5 @@ jobs:
           python -m pip install playwright==1.51.0
           python -m playwright install --with-deps chromium
           python tests/ui_smoke.py
+          python tests/ui_history_paging.py
       - run: python scripts/package_release.py --out dist
