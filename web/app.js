@@ -1,12 +1,13 @@
 'use strict';
 const $ = id => document.getElementById(id);
-const state = {status:null,busy:false,answer:null,history:[],sessionId:null,settingsBusy:false};
+const state = {status:null,busy:false,answer:null,history:[],sessionId:null,settingsBusy:false,evaluations:new Map(),evaluationTotal:0,evaluationLoading:false};
 const node = (tag, text, cls) => {const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
 const pct = v => v==null?'—':`${(v*100).toFixed(1)}%`;
 let toastTimer;
 function toast(message){$('toast').textContent=message;$('toast').classList.remove('hidden');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.add('hidden'),4500);}
 function showError(error){displayFailure(error);}
-function busy(value){state.busy=value;document.querySelectorAll('.button, #restore-samples, #file-input, #saved-session').forEach(b=>{if(!b.closest('#help-dialog, #welcome-dialog, #field-help-dialog, #error-dialog, #global-alert')&&b.id!=='open-help')b.disabled=value;});$('delete-session').disabled=value||!state.sessionId;}
+function updateDeleteSession(){const button=$('delete-session');button.disabled=state.busy||!state.sessionId;button.title=state.busy?'正在处理任务，请完成后再删除会话。':!state.sessionId?'请先选择一条已保存的会话。':'删除当前会话及其问答记录';}
+function busy(value,activeButton){state.busy=value;document.querySelectorAll('.button, #restore-samples, #file-input, #saved-session').forEach(b=>{if(!b.closest('#help-dialog, #welcome-dialog, #field-help-dialog, #error-dialog, #global-alert')&&b.id!=='open-help')b.disabled=value;});document.querySelectorAll('[aria-busy="true"]').forEach(b=>b.removeAttribute('aria-busy'));if(value&&activeButton)activeButton.setAttribute('aria-busy','true');updateDeleteSession();updateEvaluationControls();}
 async function api(path,options={}){
   options={...options};
   if(options.method && options.method!=='GET' && !(options.body instanceof FormData)){
@@ -17,12 +18,16 @@ async function api(path,options={}){
   if(!r.ok){let msg=result.detail;if(Array.isArray(msg))msg=msg.map(x=>`${x.loc?.slice(-1)[0]}: ${x.msg}`).join('；');const e=new Error(msg||`请求失败（${r.status}）`);e.diagnostic=result.error;throw e;}
   return result;
 }
-async function job(path,body,onProgress){
+async function job(path,body,onProgress,onStarted){
   const started=await api(path,{method:'POST',body});
-  const poll=async()=>{for(;;){await new Promise(r=>setTimeout(r,450));const j=await api('/jobs/'+started.job_id);onProgress?.(j.message);if(j.state==='done')return j.result;if(j.state==='error'){const e=new Error(j.message);e.diagnostic=j.error;throw e;}}};
+  onStarted?.(started);
+  return waitForJob(started.job_id,onProgress);
+}
+async function waitForJob(id,onProgress){
+  const poll=async()=>{for(;;){await new Promise(r=>setTimeout(r,450));const j=await api('/jobs/'+id);onProgress?.(j.message);if(j.state==='done')return j.result;if(j.state==='error'){const e=new Error(j.message);e.diagnostic=j.error;throw e;}}};
   if(!window.EventSource)return poll();
   return new Promise((resolve,reject)=>{
-    const source=new EventSource('/api/jobs/'+started.job_id+'/events');
+    const source=new EventSource('/api/jobs/'+id+'/events');
     source.addEventListener('progress',event=>onProgress?.(JSON.parse(event.data).message));
     source.addEventListener('done',event=>{source.close();resolve(JSON.parse(event.data));});
     source.addEventListener('failed',event=>{source.close();const data=JSON.parse(event.data);const e=new Error(data.message);e.diagnostic=data.error;reject(e);});
@@ -63,7 +68,7 @@ async function refreshSessions(){
   const sessions=await api('/sessions');$('saved-session').replaceChildren();
   const empty=node('option','新会话 · 首次提问后保存');empty.value='';$('saved-session').append(empty);
   sessions.forEach(s=>{const option=node('option',s.title+' · '+s.turn_count+' 问');option.value=s.id;$('saved-session').append(option);});
-  $('saved-session').value=state.sessionId||'';$('delete-session').disabled=!state.sessionId;
+  $('saved-session').value=state.sessionId||'';updateDeleteSession();
 }
 async function loadSession(id){
   if(state.busy)return;
@@ -126,7 +131,7 @@ function renderHistory(){
 async function ask(event){
   event?.preventDefault();if(state.busy)return;const question=$('question').value.trim();if(!question){$('question').focus();return;}
   if(state.status?.needs_rebuild){page('library');toast('请先重建索引，再进行问答。');return;}
-  busy(true);$('answer-area').classList.remove('hidden');const loading=node('div',undefined,'card answer-loading');loading.append(node('span',undefined,'spinner'),node('span','正在检索资料并核对引用…'));$('answer-area').replaceChildren(loading);
+  busy(true,$('ask-button'));$('answer-area').classList.remove('hidden');const loading=node('div',undefined,'card answer-loading');loading.append(node('span',undefined,'spinner'),node('span','正在检索资料并核对引用…'));$('answer-area').replaceChildren(loading);
   try{if(!state.sessionId){const session=await api('/sessions',{method:'POST'});state.sessionId=session.id;rememberSession();}
     const filter=$('doc-filter').value;const result=await job('/ask',{question,top_k:Number($('top-k').value),strategy:$('strategy').value,threshold:Number($('threshold').value),expand:$('expand').checked,doc_ids:filter?[filter]:[],workflow:$('workflow').value,session_id:state.sessionId,rerank:$('rerank').checked,context_chars:Number($('context-chars').value),lexical_rescue:$('lexical-rescue').checked,answer_guard:$('answer-guard').checked},message=>loading.lastChild.textContent=message);state.history.push(result);state.history=state.history.slice(-100);renderAnswer(result);renderHistory();await refreshSessions();}
   catch(e){$('answer-area').replaceChildren();showError(e);}finally{busy(false);}
@@ -142,16 +147,55 @@ for(const type of ['dragenter','dragover'])$('dropzone').addEventListener(type,e
 for(const type of ['dragleave','drop'])$('dropzone').addEventListener(type,e=>{e.preventDefault();$('dropzone').classList.remove('dragging');});
 $('dropzone').addEventListener('drop',e=>uploadFiles([...e.dataTransfer.files]));
 $('restore-samples').onclick=async()=>{if(state.busy)return;busy(true);try{await api('/samples',{method:'POST'});await refresh();toast('演示资料已载入，请重建索引。');}catch(e){showError(e);}finally{busy(false);}};
-$('rebuild').onclick=async()=>{if(state.busy)return;busy(true);try{await job('/build',{size:Number($('chunk-size').value),overlap:Number($('chunk-overlap').value)},s=>$('build-status').textContent=s);await refresh();toast('索引已更新，可以开始提问。');}catch(e){showError(e);$('build-status').textContent='重建未完成，原索引未被替换。';}finally{busy(false);}};
-async function evaluate(live=false,ablation=false){if(state.busy)return;if(live&&!$('live-eval-consent').checked){toast('请先勾选 API 调用和计费确认。');return;}busy(true);$('eval-status').textContent='开始评测…';try{const result=await job('/evaluate',{live,ablation},s=>$('eval-status').textContent=s);renderEvaluation(result);toast('评测完成，可下载逐题结果。');}catch(e){showError(e);$('eval-status').textContent='评测未完成';}finally{busy(false);}}
+$('rebuild').onclick=async()=>{if(state.busy)return;busy(true,$('rebuild'));try{await job('/build',{size:Number($('chunk-size').value),overlap:Number($('chunk-overlap').value)},s=>$('build-status').textContent=s);await refresh();toast('索引已更新，可以开始提问。');}catch(e){showError(e);$('build-status').textContent='重建未完成，原索引未被替换。';}finally{busy(false);}};
+const evaluationLabels={parameters:'参数对照评测',ablation:'优化前后对比',live:'真实模型评测'};
+function updateEvaluationControls(){if(!$('eval-load-more'))return;$('eval-load-more').classList.toggle('hidden',state.evaluations.size>=state.evaluationTotal);$('eval-load-more').disabled=state.busy||state.evaluationLoading;$('eval-empty').classList.toggle('hidden',state.evaluations.size>0);}
+function evaluationProgress(id,message){const record=state.evaluations.get(id);if(record)record.message=message;const card=$('evaluation-'+id);if(card)card.querySelector('.evaluation-progress').textContent=message;}
+function evaluationFailureButton(diagnostic){const button=node('button','查看原因与解决方法','text-button');button.type='button';button.onclick=()=>{currentFailure=diagnostic;openFailureGuide();};return button;}
+function renderEvaluationCard(record,prepend=false,expand=false){
+  const old=$('evaluation-'+record.id),card=node('details',undefined,'card eval-card evaluation-run');card.id='evaluation-'+record.id;card.dataset.state=record.state;card.dataset.evaluationId=record.id;card.open=old?old.open:expand;
+  state.evaluations.set(record.id,record);
+  const summary=node('summary',undefined,'evaluation-heading'),title=node('div',undefined,'evaluation-title');title.append(node('h2',`${evaluationLabels[record.kind]||'评测'} · 第 ${record.number} 次`),node('span',new Date(record.created_at).toLocaleString('zh-CN',{hour12:false})+' · '+(record.request.live?'真实模型':'离线演示'),'muted small'));
+  const status=node('span',{running:'正在评测',done:'已完成',error:'评测未完成',interrupted:'评测已中断'}[record.state]||'状态待确认','evaluation-state');summary.append(title,status,node('span','展开 / 收起','muted small evaluation-toggle'));card.append(summary);
+  const body=node('div',undefined,'evaluation-body'),progress=node('p',record.state==='done'?`${record.result.runs.length} 组 · ${record.result.question_count} 题 / 组`:record.message,'evaluation-progress help');progress.setAttribute('role','status');body.append(progress);
+  const p=record.request.parameters||{},models=record.request.models||{};
+  body.append(node('p',`切分 ${p.sizes?.join(' / ')||'见报表'} 字符 · top-k ${p.top_k?.join(' / ')||'见报表'} · ${(p.strategies||[]).map(s=>s==='hybrid'?'混合':'向量').join(' / ')} · 阈值 ${p.thresholds?.join(' / ')??'见报表'} · 重叠 ${p.overlap??'见报表'} 字符 · 查询扩展 ${p.expand?'开启':'关闭'}`,'evaluation-snapshot help'));
+  body.append(node('p',`对话：${models.llm_model||'见报表'}；向量：${models.embedding_model||'见报表'}。${record.request.imported?'此记录从旧版完整报表恢复。':'这是运行时保存的设置。'}`,'evaluation-snapshot help'));
+  if(record.state==='done')renderEvaluation(record.result,body);
+  else if(record.state==='running')body.append(node('p','本轮正在独立运行，完成后会在这里显示结果。历史结果仍可展开和下载。','help'));
+  else if(record.state==='interrupted'){
+    const guide=node('button','查看中断处理引导','text-button');guide.type='button';guide.onclick=()=>openFieldHelp('eval_history');body.append(node('p','服务重启时，本轮尚未完成，不能作为完整结果。历史报告保留；确认后使用上方对应按钮重新评测，真实模型会产生新的 API 调用。','help'),guide);
+  }else{body.append(node('p',record.error?.stage?'失败步骤：'+record.error.stage:'本轮未生成完整报告。','help'));if(record.error)body.append(evaluationFailureButton(record.error));}
+  card.append(body);if(old)old.replaceWith(card);else if(prepend)$('evaluation-history').prepend(card);else $('evaluation-history').append(card);updateEvaluationControls();
+}
+async function loadEvaluations(more=false){
+  if(state.evaluationLoading)return;state.evaluationLoading=true;updateEvaluationControls();
+  try{const data=await api('/evaluations?offset='+(more?state.evaluations.size:0)+'&limit=20');if(!more){state.evaluations.clear();$('evaluation-history').replaceChildren();}state.evaluationTotal=data.total;data.items.forEach((record,i)=>renderEvaluationCard(record,false,!more&&i===0));for(const record of data.items.filter(r=>r.state==='running'))resumeEvaluation(record);}
+  finally{state.evaluationLoading=false;updateEvaluationControls();}
+}
+async function resumeEvaluation(record){
+  busy(true,$({parameters:'run-eval',ablation:'run-ablation',live:'run-live-eval'}[record.kind]));
+  try{const result=await waitForJob(record.id,message=>evaluationProgress(record.id,message));renderEvaluationCard({...record,state:'done',result,finished_at:new Date().toISOString()});}
+  catch(error){try{const saved=await api('/evaluations/'+record.id);renderEvaluationCard(saved);if(saved.state==='running')showError(error);}catch{showError(error);}}
+  finally{busy(false);}
+}
+$('eval-load-more').onclick=()=>loadEvaluations(true).catch(showError);
+async function evaluate(live=false,ablation=false){
+  if(state.busy||state.evaluationLoading)return;if(live&&!$('live-eval-consent').checked){toast('请先勾选 API 调用和计费确认。');return;}
+  let record;busy(true,$(live?'run-live-eval':ablation?'run-ablation':'run-eval'));
+  try{const result=await job('/evaluate',{live,ablation},message=>{if(record)evaluationProgress(record.id,message);},started=>{record=started.evaluation;document.querySelectorAll('.evaluation-run').forEach(card=>card.open=false);state.evaluationTotal++;renderEvaluationCard(record,true,true);});renderEvaluationCard({...record,state:'done',result,finished_at:new Date().toISOString()});toast('评测完成，已独立保存，可下载本轮逐题结果。');}
+  catch(error){if(record){const diagnostic=error.diagnostic||fallbackDiagnostic(error);let saved;try{saved=await api('/evaluations/'+record.id);}catch{}renderEvaluationCard(saved||{...record,state:'error',message:diagnostic.message,error:diagnostic});}showError(error);}
+  finally{busy(false);}
+}
 $('run-eval').onclick=()=>evaluate();$('run-live-eval').onclick=()=>evaluate(true);$('run-ablation').onclick=()=>evaluate(false,true);
-function renderEvaluation(result){
-  $('eval-status').textContent=`${result.runs.length} 组 · ${result.question_count} 题 / 组`;$('eval-results').className='eval-table-wrap';$('eval-results').replaceChildren();const table=node('table',undefined,'eval-table');const head=node('thead');const hr=node('tr');['策略','chunk','top-k','检索','证据召回','完整证据','多证据完整','无答案拒答','有答案误拒'].forEach(t=>hr.append(node('th',t)));head.append(hr);table.append(head);const body=node('tbody');const best=Math.max(...result.runs.map(r=>r.metrics.all_evidence_at_k));for(const r of result.runs){const row=node('tr');if(r.metrics.all_evidence_at_k===best)row.className='best';[r.variant||'当前',r.size,r.top_k,r.strategy==='hybrid'?'混合':'向量',pct(r.metrics.evidence_recall),pct(r.metrics.all_evidence_at_k),pct(r.metrics.multi_all_evidence),pct(r.metrics.refusal_rate_on_unanswerable),String(r.metrics.refused_answerable_count??'—')].forEach((v,i)=>row.append(node('td',String(v),i===5?'bar-cell':undefined)));body.append(row);}table.append(body);$('eval-results').append(table,node('p','浅色行表示本次完整证据率最高的配置。小样本结果不能代表真实课程总体效果。','help'));
-  const quoteRates=result.runs.map(r=>r.metrics.quote_match_rate).filter(x=>x!=null);$('eval-results').append(node('p',`已展示引文的原文匹配率：${quoteRates.length?pct(Math.min(...quoteRates))+'–'+pct(Math.max(...quoteRates)):'无引用'}。回答先经引用校验；该数值不代表语义正确率。`,'help'));
-  const quality=r=>[r.metrics.all_evidence_at_k??-1,r.metrics.refusal_rate_on_unanswerable??-1,-(r.metrics.refused_answerable_count??0)];const bestRun=result.runs.reduce((a,b)=>{const x=quality(a),y=quality(b);for(let i=0;i<x.length;i++){if(y[i]>x[i])return b;if(y[i]<x[i])return a;}return a;});const overview=$('eval-overview');overview.replaceChildren();overview.classList.remove('hidden');
+function renderEvaluation(result,target){
+  const overview=node('div',undefined,'metric-overview'),results=node('div',undefined,'eval-table-wrap'),downloads=node('div',undefined,'download-links');target.append(overview,results,downloads);
+  const table=node('table',undefined,'eval-table');const head=node('thead');const hr=node('tr');['策略','chunk','top-k','检索','证据召回','完整证据','多证据完整','无答案拒答','有答案误拒'].forEach(t=>hr.append(node('th',t)));head.append(hr);table.append(head);const body=node('tbody');const best=Math.max(...result.runs.map(r=>r.metrics.all_evidence_at_k));for(const r of result.runs){const row=node('tr');if(r.metrics.all_evidence_at_k===best)row.className='best';[r.variant||'当前',r.size,r.top_k,r.strategy==='hybrid'?'混合':'向量',pct(r.metrics.evidence_recall),pct(r.metrics.all_evidence_at_k),pct(r.metrics.multi_all_evidence),pct(r.metrics.refusal_rate_on_unanswerable),String(r.metrics.refused_answerable_count??'—')].forEach((v,i)=>row.append(node('td',String(v),i===5?'bar-cell':undefined)));body.append(row);}table.append(body);results.append(table,node('p','浅色行表示本次完整证据率最高的配置。小样本结果不能代表真实课程总体效果。','help'));
+  const quoteRates=result.runs.map(r=>r.metrics.quote_match_rate).filter(x=>x!=null);results.append(node('p',`已展示引文的原文匹配率：${quoteRates.length?pct(Math.min(...quoteRates))+'–'+pct(Math.max(...quoteRates)):'无引用'}。回答先经引用校验；该数值不代表语义正确率。`,'help'));
+  const quality=r=>[r.metrics.all_evidence_at_k??-1,r.metrics.refusal_rate_on_unanswerable??-1,-(r.metrics.refused_answerable_count??0)];const bestRun=result.runs.reduce((a,b)=>{const x=quality(a),y=quality(b);for(let i=0;i<x.length;i++){if(y[i]>x[i])return b;if(y[i]<x[i])return a;}return a;});
   [['本次模式',result.settings.live?'真实模型':'离线演示'],['最高完整证据率',pct(bestRun.metrics.all_evidence_at_k)],['对应边界题拒答率',pct(bestRun.metrics.refusal_rate_on_unanswerable)],['对应平均耗时',bestRun.metrics.mean_latency_ms+' ms']].forEach(([label,value])=>{const tile=node('div');tile.append(node('small',label),node('strong',value));overview.append(tile);});
-  const bars=node('div',undefined,'eval-bars');result.runs.forEach(r=>{const row=node('div');const meter=node('meter');meter.min=0;meter.max=1;meter.value=r.metrics.all_evidence_at_k;meter.setAttribute('aria-label',`chunk ${r.size} top-k ${r.top_k} ${r.strategy} 完整证据率`);row.append(node('span',r.variant||`${r.size} / ${r.top_k} / ${r.strategy==='hybrid'?'混合':'向量'}`),meter,node('b',pct(r.metrics.all_evidence_at_k)));bars.append(row);});$('eval-results').append(bars);
-  $('eval-downloads').replaceChildren();for(const [ext,file] of Object.entries(result.files)){const a=node('a','下载 '+ext.toUpperCase());a.href='/api/reports/'+encodeURIComponent(file);a.download=file;$('eval-downloads').append(a);}
+  const bars=node('div',undefined,'eval-bars');result.runs.forEach(r=>{const row=node('div');const meter=node('meter');meter.min=0;meter.max=1;meter.value=r.metrics.all_evidence_at_k;meter.setAttribute('aria-label',`chunk ${r.size} top-k ${r.top_k} ${r.strategy} 完整证据率`);row.append(node('span',r.variant||`${r.size} / ${r.top_k} / ${r.strategy==='hybrid'?'混合':'向量'}`),meter,node('b',pct(r.metrics.all_evidence_at_k)));bars.append(row);});results.append(bars);
+  for(const [ext,file] of Object.entries(result.files)){const a=node('a','下载 '+ext.toUpperCase());a.href='/api/reports/'+encodeURIComponent(file);a.download=file;downloads.append(a);}
 }
 function openHelp(){if(!$('help-dialog').open)$('help-dialog').showModal();}
 $('open-help').onclick=openHelp;$('close-help').onclick=()=>$('help-dialog').close();$('help-done').onclick=()=>$('help-dialog').close();
@@ -181,7 +225,7 @@ async function probeModel(kind,route){if(state.settingsBusy)return;const payload
 async function waitForRestart(previous){for(let i=0;i<100;i++){await new Promise(r=>setTimeout(r,400));try{const health=await api('/health');if(health.instance_id!==previous)return;}catch{}}throw new Error('设置已保存，但服务尚未恢复。请查看启动窗口提示。');}
 async function saveModelSettings(event,demo=false){event?.preventDefault();if(state.settingsBusy)return;const payload=modelPayload();if(demo)for(const k of Object.keys(connectionLabels))payload[k].enabled=false;settingsBusy(true);$('model-feedback').textContent='正在保存并应用…';try{const result=await api('/settings',{method:'POST',body:payload});renderModelFields(result.settings);$('model-feedback').textContent=result.message;if(result.restart_requested){await waitForRestart(result.previous_instance);$('model-feedback').textContent='服务已自动重启，配置已生效。'+(result.needs_rebuild?'请在资料库重建索引。':'可以继续提问。');}await refresh();toast($('model-feedback').textContent);}catch(error){$('model-feedback').textContent=error.message;showError(error);}finally{settingsBusy(false);}}
 $('open-model-settings').onclick=openModelSettings;$('settings-edit').onclick=openModelSettings;$('model-form').onsubmit=saveModelSettings;$('model-demo').onclick=()=>saveModelSettings(null,true);$('help-config').onclick=()=>{$('help-dialog').close();openModelSettings();};
-async function initialize(){const integration=await api('/integrations');$('mcp-url').value=integration.mcp.url;renderModelFields(await api('/settings'));await refresh();await refreshSessions();let previous,seen=false;try{previous=localStorage.getItem('evidence-session');seen=localStorage.getItem('zhiju-welcome-1.2')==='seen';localStorage.setItem('zhiju-welcome-1.2','seen');}catch{}if(previous&&[...$('saved-session').options].some(o=>o.value===previous))await loadSession(previous);if(new URLSearchParams(location.search).has('help'))openHelp();else if(!seen)$('welcome-dialog').showModal();}
+async function initialize(){const integration=await api('/integrations');$('mcp-url').value=integration.mcp.url;renderModelFields(await api('/settings'));await refresh();await refreshSessions();let previous,seen=false;try{previous=localStorage.getItem('evidence-session');seen=localStorage.getItem('zhiju-welcome-1.2')==='seen';localStorage.setItem('zhiju-welcome-1.2','seen');}catch{}if(previous&&[...$('saved-session').options].some(o=>o.value===previous))await loadSession(previous);await loadEvaluations();if(new URLSearchParams(location.search).has('help'))openHelp();else if(!seen)$('welcome-dialog').showModal();}
 initialize().catch(e=>{showError(e);$('mode-pill').textContent='连接失败';});
 
 $('copy-mcp').onclick=async()=>{try{await navigator.clipboard.writeText($('mcp-url').value);toast('已复制 MCP 地址。');}catch{toast('请选中地址后复制。');}};
