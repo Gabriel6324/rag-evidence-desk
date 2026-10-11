@@ -1,0 +1,709 @@
+[
+  {
+    "code": "FILE_FORMAT",
+    "title": "文件类型不支持",
+    "cause": "当前导入器只读取 TXT、Markdown、DOCX 和含文字的 PDF。",
+    "steps": [
+      "确认文件的真实类型；改扩展名不会转换格式。",
+      "用原软件另存为支持的格式，再导入。图片或扫描件先识别文字。"
+    ],
+    "match": [
+      "支持 TXT"
+    ],
+    "page": "library",
+    "topic": "app"
+  },
+  {
+    "code": "FILE_SIZE",
+    "title": "文件为空或太大",
+    "cause": "文件没有有效内容，或超过当前单文件 10 MB 限制。",
+    "steps": [
+      "在原软件打开，确认有内容并保存。",
+      "超过 10 MB 时拆分成较小文件；每份单独导入。"
+    ],
+    "match": [
+      "文件为空或超过",
+      "超过 10 MB"
+    ],
+    "page": "library",
+    "topic": "app"
+  },
+  {
+    "code": "FILE_NAME",
+    "title": "文件名不符合要求",
+    "cause": "文件名为空或太长，无法按当前规则导入。",
+    "steps": [
+      "给文件起一个较短且非空的名称，少于 160 个字符。",
+      "重新选择文件上传。"
+    ],
+    "match": [
+      "文件名不能为空"
+    ],
+    "page": "library",
+    "topic": "app"
+  },
+  {
+    "code": "PDF_PASSWORD",
+    "title": "PDF 需要密码",
+    "cause": "该 PDF 有加密保护，软件无法直接读取正文。",
+    "steps": [
+      "在有权限的情况下，用 PDF 软件打开并输入密码。",
+      "另存为可读取的无密码副本，再导入。"
+    ],
+    "match": [
+      "PDF 密码"
+    ],
+    "page": "library",
+    "topic": "app"
+  },
+  {
+    "code": "PDF_PAGES",
+    "title": "PDF 页数超过限制",
+    "cause": "单份 PDF 超过 300 页。",
+    "steps": [
+      "按章节拆分成每份不超过 300 页的文件。",
+      "分别导入，确认索引完成后再提问。"
+    ],
+    "match": [
+      "PDF 最多 300 页"
+    ],
+    "page": "library",
+    "topic": "app"
+  },
+  {
+    "code": "DOCX_EXPANDED_SIZE",
+    "title": "Word 解压后的内容太大",
+    "cause": "DOCX 是压缩文件；内部内容超过解析限制。",
+    "steps": [
+      "在 Word 中按章节拆分文档，或删除不必要的大型附件。",
+      "另存为 DOCX／TXT 后分别导入。"
+    ],
+    "match": [
+      "DOCX 解压内容过大"
+    ],
+    "page": "library",
+    "topic": "app"
+  },
+  {
+    "code": "TEXT_ENCODING",
+    "title": "文本编码无法识别",
+    "cause": "文件不是可识别的 UTF-8 或兼容中文文本编码。",
+    "steps": [
+      "用文本编辑器打开，选择“另存为”，编码选择 UTF-8。",
+      "保存为 .txt 或 .md 后重新导入。"
+    ],
+    "match": [
+      "文本编码无法识别"
+    ],
+    "page": "library",
+    "topic": "app"
+  },
+  {
+    "code": "FILE_PARSE",
+    "title": "文件解析失败",
+    "cause": "软件没有成功解析该文件，可能是损坏或内容格式不匹配。",
+    "steps": [
+      "先用原软件打开文件，确认能读到正文。",
+      "重新另存一份正常的 PDF／DOCX／TXT，再导入；不要只改扩展名。",
+      "仍失败时复制错误详情，保留原文件用于排查。"
+    ],
+    "match": [
+      "文件解析失败"
+    ],
+    "page": "library",
+    "topic": "app"
+  },
+  {
+    "code": "FILE_NO_TEXT",
+    "title": "没有读到文字",
+    "cause": "扫描 PDF 或图片页通常没有可提取的文字层。",
+    "steps": [
+      "在 PDF 中试着选中并复制一段文字；选不了时先做 OCR 文字识别。",
+      "把识别结果保存为含文字的 PDF／DOCX／TXT，再导入。"
+    ],
+    "match": [
+      "未提取到文字"
+    ],
+    "page": "library",
+    "topic": "app"
+  },
+  {
+    "code": "FILE_TEXT_LIMIT",
+    "title": "资料文字量超过限制",
+    "cause": "单份资料超过 30 万字符。",
+    "steps": [
+      "按章节拆分文件，保证每份小于 30 万字符。",
+      "分别导入并重建索引。"
+    ],
+    "match": [
+      "单份资料最多 30 万"
+    ],
+    "page": "library",
+    "topic": "app"
+  },
+  {
+    "code": "LIBRARY_LIMIT",
+    "title": "资料库容量已满",
+    "cause": "已达到 60 份资料或 200 万字符的限制。",
+    "steps": [
+      "进入资料库，移除不需要的资料，或合并／精简文档。",
+      "重新导入，再重建索引。"
+    ],
+    "match": [
+      "最多导入 60",
+      "最多 200 万"
+    ],
+    "page": "library",
+    "topic": "app"
+  },
+  {
+    "code": "DOCUMENT_MISSING",
+    "title": "资料已不存在",
+    "cause": "请求的资料已被删除，或页面使用了旧资料编号。",
+    "steps": [
+      "刷新资料清单，重新选择仍存在的资料。",
+      "需要原文时重新导入该文件并建立索引。"
+    ],
+    "match": [
+      "资料不存在"
+    ],
+    "page": "library",
+    "topic": "app"
+  },
+  {
+    "code": "INDEX_EMPTY",
+    "title": "还没有可索引的资料",
+    "cause": "资料库没有至少一份含文字的有效文档。",
+    "steps": [
+      "进入资料库上传含文字的文件，或点击载入演示资料。",
+      "确认清单中有资料，再重建索引。"
+    ],
+    "match": [
+      "请先导入至少一份"
+    ],
+    "page": "library",
+    "topic": "app"
+  },
+  {
+    "code": "INDEX_TOO_MANY",
+    "title": "资料被切得太碎",
+    "cause": "切分结果超过 6000 个片段。",
+    "steps": [
+      "在资料库增加 chunk 长度，或减少资料数量。",
+      "先使用默认长度 420、重叠 70，再点击重建。"
+    ],
+    "match": [
+      "切分超过 6000"
+    ],
+    "page": "library",
+    "topic": "app"
+  },
+  {
+    "code": "INDEX_PARAMETERS",
+    "title": "索引参数不符合范围",
+    "cause": "切分长度或重叠范围无效；重叠必须小于切分长度。",
+    "steps": [
+      "chunk 长度填 120–1600，重叠填 0–399 且小于 chunk。",
+      "可先恢复长度 420、重叠 70 后重建。"
+    ],
+    "match": [
+      "chunk 长度须",
+      "overlap 必须"
+    ],
+    "page": "library",
+    "topic": "app"
+  },
+  {
+    "code": "INDEX_STALE",
+    "title": "资料索引需要更新",
+    "cause": "资料内容或向量配置已变化，当前索引不能用于可靠检索。",
+    "steps": [
+      "进入资料库，点击重建向量索引。",
+      "等待完成后回资料问答重试。不要删除现有资料。"
+    ],
+    "match": [
+      "先重建索引",
+      "查询向量维度与索引",
+      "Embedding 维度发生变化"
+    ],
+    "page": "library",
+    "topic": "embedding"
+  },
+  {
+    "code": "RETRIEVAL_PARAMETERS",
+    "title": "检索参数无效",
+    "cause": "取段落数、策略或阈值超出允许范围。",
+    "steps": [
+      "top-k 填 1–12，阈值填 0–1；选择向量或混合检索。",
+      "可先恢复 top-k 5、阈值 0.08 再提问。"
+    ],
+    "match": [
+      "检索参数无效"
+    ],
+    "page": "chat",
+    "topic": "metrics"
+  },
+  {
+    "code": "SETTING_VALIDATION",
+    "title": "填写内容不符合要求",
+    "cause": "某些设置缺失、格式不正确或超出允许范围。",
+    "steps": [
+      "按提示中的字段名检查对应输入框；不要粘贴换行、引号或无关文字。",
+      "超时填 5–300 的整数，地址使用有效的 HTTP(S) 基础地址。",
+      "修正后先测试该接口，再保存。"
+    ],
+    "match": [
+      "请检查填写内容",
+      "API_TIMEOUT_SECONDS",
+      "运行模式无效",
+      "LLM_JSON_MODE",
+      "RAG_RERANK_MODE"
+    ],
+    "page": "settings",
+    "topic": "advanced"
+  },
+  {
+    "code": "SETTING_LINE",
+    "title": "复制的设置包含换行",
+    "cause": "地址、Key 或模型名必须是单行内容。",
+    "steps": [
+      "清除当前输入，重新复制单行地址、Key 或模型 ID。",
+      "不要把控制台整段说明一起粘贴进去。"
+    ],
+    "match": [
+      "必须填写在一行"
+    ],
+    "page": "settings",
+    "topic": "key"
+  },
+  {
+    "code": "SETTING_URL",
+    "title": "服务地址格式不正确",
+    "cause": "地址不是可用的基础 HTTP(S) 地址，或包含账号、参数、错误端口。",
+    "steps": [
+      "从当前服务平台的 API 接入文档复制基础地址。",
+      "去掉完整请求路径、查询参数、Key 和账号密码。",
+      "远程服务使用 HTTPS，本机服务可用 HTTP。"
+    ],
+    "match": [
+      "API 地址",
+      "远程模型 / Qdrant",
+      "服务地址格式有误"
+    ],
+    "page": "settings",
+    "topic": "url"
+  },
+  {
+    "code": "KEY_PROVIDER_CHANGED",
+    "title": "平台地址已换，原 Key 不能沿用",
+    "cause": "为了避免把旧平台的 Key 发给新平台，更换平台地址时需要重新提供凭证。",
+    "steps": [
+      "在新服务平台的 API 控制台创建并复制自己的 Key。",
+      "填入新 Key；本机不需要 Key 时明确勾选清除原 Key。"
+    ],
+    "match": [
+      "服务地址已换到其他服务"
+    ],
+    "page": "settings",
+    "topic": "key"
+  },
+  {
+    "code": "SETTING_ENVIRONMENT",
+    "title": "设置由启动环境固定",
+    "cause": "这次启动时通过环境变量固定了配置，网页不能覆盖它。",
+    "steps": [
+      "关闭通过命令行或特殊环境启动的实例。",
+      "用正常双击 EXE／启动脚本的方式打开，再在窗口设置。",
+      "进阶部署者检查对应环境变量，不要在运行中的任务里混改。"
+    ],
+    "match": [
+      "此连接由启动环境管理"
+    ],
+    "page": "settings",
+    "topic": "save"
+  },
+  {
+    "code": "MODEL_REQUIRED",
+    "title": "尚未填写模型名",
+    "cause": "软件还不知道调用当前平台的哪个模型。",
+    "steps": [
+      "从当前服务平台复制与本卡片用途一致的模型 ID。",
+      "也可以尝试获取可用模型，再测试连接。"
+    ],
+    "match": [
+      "请先填写模型名",
+      "请设置 EMBEDDING_MODEL",
+      "请设置 RERANK_MODEL",
+      "填写对话模型名称"
+    ],
+    "page": "settings",
+    "topic": "model"
+  },
+  {
+    "code": "MODEL_LIST_UNAVAILABLE",
+    "title": "平台没有可用的模型列表",
+    "cause": "列表查询未返回有效列表，不表示模型调用一定失败。",
+    "steps": [
+      "去服务平台控制台手动复制模型 ID。",
+      "填写后直接测试这个连接。"
+    ],
+    "match": [
+      "服务商未提供可用模型列表"
+    ],
+    "page": "settings",
+    "topic": "models"
+  },
+  {
+    "code": "MODEL_JSON",
+    "title": "模型返回格式不符合约定",
+    "cause": "收到的回答没有提供可解析的固定 JSON 结构。",
+    "steps": [
+      "在接口设置测试对话模型，并确认支持 JSON 输出。",
+      "平台不支持 response_format 时，可关闭 JSON 输出约束后再测。",
+      "仍失败时换兼容模型；不要把这次未校验内容当成答案。"
+    ],
+    "match": [
+      "约定 JSON",
+      "有效 JSON",
+      "不符合约定结构",
+      "模型结论结构无效",
+      "模型未返回可核验"
+    ],
+    "page": "settings",
+    "topic": "json_mode"
+  },
+  {
+    "code": "MODEL_VECTOR",
+    "title": "向量模型返回的数据无效",
+    "cause": "返回向量缺失、不完整，或维度／数值不符合要求。",
+    "steps": [
+      "确认选择的是 Embedding 模型，而不是对话或重排模型。",
+      "检查当前平台的 /embeddings 接口兼容性并重新测试。",
+      "测试通过后保存；切换向量配置时重建资料索引。"
+    ],
+    "match": [
+      "向量维度或数值无效",
+      "Embedding API 返回",
+      "Embedding 维度、数值"
+    ],
+    "page": "settings",
+    "topic": "embedding"
+  },
+  {
+    "code": "MODEL_RERANK",
+    "title": "重排模型返回的数据无效",
+    "cause": "没有收到可用的排序结果。",
+    "steps": [
+      "确认模型用途为 Rerank，地址支持 /rerank。",
+      "重新测试该卡片；也可先关闭问答中的模型重排继续使用原排序。"
+    ],
+    "match": [
+      "重排结果无效",
+      "重排接口返回结构无效",
+      "再启用重排"
+    ],
+    "page": "settings",
+    "topic": "rerank"
+  },
+  {
+    "code": "ANSWER_CITATION",
+    "title": "回答没有通过引用校验",
+    "cause": "模型引用了不存在的编号、修改过的引文，或没有提供必要引用。",
+    "steps": [
+      "在资料问答检查右侧证据是否真的包含答案。",
+      "试着把 top-k 稍微调大或把问题写具体，再重试。",
+      "若反复失败，在接口设置换用能稳定输出引用结构的对话模型。"
+    ],
+    "match": [
+      "模型引用",
+      "模型结论缺少引用"
+    ],
+    "page": "chat",
+    "topic": "app"
+  },
+  {
+    "code": "AGENT_UNSUPPORTED",
+    "title": "Agent 工具调用不兼容",
+    "cause": "模型没有返回符合约定的工具调用消息或参数。",
+    "steps": [
+      "在接口设置测试对话模型，查看工具调用测试结果。",
+      "确认平台和模型支持 tool calls；换兼容模型后再试。",
+      "也可先在资料问答把流程切为 RAG，使用普通检索问答。"
+    ],
+    "match": [
+      "Agent 接口未返回",
+      "Agent 返回的工具",
+      "工具参数不符合",
+      "工具不在允许"
+    ],
+    "page": "settings",
+    "topic": "llm"
+  },
+  {
+    "code": "AGENT_BUDGET",
+    "title": "模型中间输出超过预算",
+    "cause": "模型的中间过程过长，已达到这次运行的限制。",
+    "steps": [
+      "缩短问题，分成几次提问。",
+      "选择非思考模式或普通 RAG 流程；需要时换输出更简短的模型。"
+    ],
+    "match": [
+      "中间输出超过"
+    ],
+    "page": "chat",
+    "topic": "llm"
+  },
+  {
+    "code": "AGENT_REJECTED",
+    "title": "查阅步骤被拒绝",
+    "cause": "工具尝试访问未检索到的证据，或内容含改变系统规则的指令。",
+    "steps": [
+      "用普通资料问题重新提问，去掉要求改变软件规则的内容。",
+      "先检索对应资料，再打开已经取得的证据原文。",
+      "含可疑指令的段落需要人工核对内容后再使用。"
+    ],
+    "match": [
+      "检索问题为空",
+      "仅可读取本次",
+      "邻近原文包含"
+    ],
+    "page": "chat",
+    "topic": "architecture"
+  },
+  {
+    "code": "SESSION_MISSING",
+    "title": "会话或运行记录已不存在",
+    "cause": "记录已删除、编号无效，或超出当前保留数量。",
+    "steps": [
+      "从会话列表重新选择现有会话；需要时新建会话再提问。",
+      "旧运行记录无法恢复时，重新运行并导出新记录。"
+    ],
+    "match": [
+      "无效的会话",
+      "会话不存在",
+      "运行记录不存在"
+    ],
+    "page": "chat",
+    "topic": "app"
+  },
+  {
+    "code": "SESSION_LIMIT",
+    "title": "保存的会话数量已满",
+    "cause": "已达到最多 200 个会话。",
+    "steps": [
+      "先导出需要保留的回答。",
+      "删除不需要的会话后，再新建会话。"
+    ],
+    "match": [
+      "最多保存 200"
+    ],
+    "page": "chat",
+    "topic": "app"
+  },
+  {
+    "code": "TASK_BUSY",
+    "title": "已有任务正在运行",
+    "cause": "为了避免途中切换配置或同时写索引，当前操作需等待。",
+    "steps": [
+      "观察问答、索引或评测的进度。",
+      "等当前任务完成，再保存设置或启动新任务。"
+    ],
+    "match": [
+      "正在处理任务",
+      "已有任务正在运行"
+    ],
+    "page": "chat",
+    "topic": "save"
+  },
+  {
+    "code": "TASK_MISSING",
+    "title": "任务记录已不存在",
+    "cause": "服务重启后，内存中的任务编号已失效。",
+    "steps": [
+      "确认启动窗口显示服务就绪，刷新工作台。",
+      "检查已有结果；需要时重新发起操作。真实模型重跑可能产生新费用。"
+    ],
+    "match": [
+      "任务不存在"
+    ],
+    "page": "chat",
+    "topic": "app"
+  },
+  {
+    "code": "EVAL_CONFIGURATION",
+    "title": "评测运行方式不正确",
+    "cause": "离线优化对照与真实模型评测需单独运行；真实模型评测还需启用对话接口。",
+    "steps": [
+      "离线选择对照评测或优化前后对比，不需要 Key。",
+      "真实模型评测先接通对话模型，勾选计费确认后单独运行。"
+    ],
+    "match": [
+      "真实模型评测请单独",
+      "先连接对话模型"
+    ],
+    "page": "experiments",
+    "topic": "evaluation"
+  },
+  {
+    "code": "EVAL_DATASET",
+    "title": "评测题或标注资料不符合要求",
+    "cause": "评测需要唯一问题编号、有效题目以及能在原文找到的证据标注。",
+    "steps": [
+      "使用随软件提供的内置资料与 questions.json 重新运行。",
+      "自定义问题文件保存为 UTF-8 编码的有效 JSON 数组；检查引号、逗号和括号。",
+      "自定义评测时逐项检查题号、题目、证据来源和连续原文引文。",
+      "缺少至少一道有证据题或资料文件时，先补齐标注再测。"
+    ],
+    "match": [
+      "评测集",
+      "评测题",
+      "没有找到评测资料"
+    ],
+    "page": "experiments",
+    "topic": "evaluation"
+  },
+  {
+    "code": "REPORT_MISSING",
+    "title": "评测报告不存在",
+    "cause": "报告名无效，或者任务没有成功生成这份文件。",
+    "steps": [
+      "回到实验评测，检查任务是否完成。",
+      "成功后点击本次结果中的下载链接；旧链接失效时重新生成报告。"
+    ],
+    "match": [
+      "无效的报告名",
+      "报告不存在"
+    ],
+    "page": "experiments",
+    "topic": "evaluation"
+  },
+  {
+    "code": "LOCAL_REQUEST_BLOCKED",
+    "title": "请求来源不被允许",
+    "cause": "本机应用拒绝来自其他网页的跨站修改请求。",
+    "steps": [
+      "直接在启动窗口打开的本机工作台操作。",
+      "不要从另一站点的嵌入页发送修改请求；重新打开正确地址再试。"
+    ],
+    "match": [
+      "仅允许从本机",
+      "不接受跨站"
+    ],
+    "page": "settings",
+    "topic": "app"
+  },
+  {
+    "code": "REQUEST_LENGTH_MISSING",
+    "title": "请求没有提供内容长度",
+    "cause": "本机服务没有收到 Content-Length，无法先检查这次请求的大小。",
+    "steps": [
+      "从启动窗口打开工作台，再用页面按钮重新操作。",
+      "自行调用接口时，发送带 Content-Length 的请求；检查是否被中间代理移除。"
+    ],
+    "match": ["请求必须包含 Content-Length"],
+    "page": "settings",
+    "topic": "app"
+  },
+  {
+    "code": "REQUEST_LENGTH_INVALID",
+    "title": "请求内容长度格式不正确",
+    "cause": "Content-Length 不是可接受的非负整数字节数。",
+    "steps": [
+      "直接使用工作台页面重新提交，由浏览器计算请求长度。",
+      "自行调用接口时，移除手写的错误长度，交给 HTTP 客户端根据实际请求体生成。"
+    ],
+    "match": ["Content-Length 必须是非负整数"],
+    "page": "settings",
+    "topic": "app"
+  },
+  {
+    "code": "REQUEST_TOO_LARGE",
+    "title": "请求内容超过限制",
+    "cause": "发送到本机服务的请求超过允许大小。",
+    "steps": [
+      "资料每份不超过 10 MB；问题不超过 1500 字符。",
+      "拆分文件或缩短输入后重新操作。"
+    ],
+    "match": [
+      "请求过大",
+      "请求体过大",
+      "请求大小"
+    ],
+    "page": "library",
+    "topic": "app"
+  },
+  {
+    "code": "INPUT_UNRECOGNIZED",
+    "title": "输入内容未通过检查",
+    "cause": "当前输入不满足该操作的要求。",
+    "steps": [
+      "按页面提示检查选项、输入长度与格式。",
+      "修正当前操作的输入后重试；需要时复制详细信息。"
+    ],
+    "match": [
+      "请检查"
+    ],
+    "page": "settings",
+    "topic": "advanced"
+  },
+  {
+    "code": "QUESTION_INPUT",
+    "title": "问题为空或超出长度",
+    "cause": "问题需要 1–1500 个字符，MCP 的 top-k 需要 1–12。",
+    "steps": [
+      "输入一个具体的资料问题，保持不超过 1500 字符。",
+      "MCP 查询时确认 top-k 是 1–12 的整数。"
+    ],
+    "match": [
+      "请输入 1–1500",
+      "问题应为 1–1500"
+    ],
+    "page": "chat",
+    "topic": "app"
+  },
+  {
+    "code": "CONTEXT_BUDGET",
+    "title": "问答流程或证据预算不正确",
+    "cause": "流程需选 RAG 或 Agent；证据预算需在 1200–24000 字符之间。",
+    "steps": [
+      "在资料问答选择有效流程。",
+      "把证据预算恢复为默认 9000 字符后重试。"
+    ],
+    "match": [
+      "问答流程或证据预算无效"
+    ],
+    "page": "chat",
+    "topic": "architecture"
+  },
+  {
+    "code": "MCP_DOCUMENT_ID",
+    "title": "MCP 资料编号不正确",
+    "cause": "资料编号需要来自本次资料列表或检索结果。",
+    "steps": [
+      "先调用 list_documents 获取当前编号。",
+      "复制完整 doc_id 再查询，不用文件名替代编号。"
+    ],
+    "match": [
+      "资料编号无效"
+    ],
+    "page": "settings",
+    "topic": "mcp"
+  },
+  {
+    "code": "MCP_SOURCE_POSITION",
+    "title": "MCP 原文位置不正确",
+    "cause": "章节、字符起点或长度不在所选原文范围内。",
+    "steps": [
+      "使用 search_documents 返回的文档和 unit 位置。",
+      "字符起点从 0 开始；读取长度填 1–4000，不超过原文范围。",
+      "资料已删除或变化时，重新检索再读。"
+    ],
+    "match": [
+      "原文定位参数无效",
+      "原文章节不存在",
+      "字符起点超出原文范围"
+    ],
+    "page": "settings",
+    "topic": "mcp"
+  }
+]
