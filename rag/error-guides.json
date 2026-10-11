@@ -600,7 +600,9 @@
       "从启动窗口打开工作台，再用页面按钮重新操作。",
       "自行调用接口时，发送带 Content-Length 的请求；检查是否被中间代理移除。"
     ],
-    "match": ["请求必须包含 Content-Length"],
+    "match": [
+      "请求必须包含 Content-Length"
+    ],
     "page": "settings",
     "topic": "app"
   },
@@ -612,7 +614,9 @@
       "直接使用工作台页面重新提交，由浏览器计算请求长度。",
       "自行调用接口时，移除手写的错误长度，交给 HTTP 客户端根据实际请求体生成。"
     ],
-    "match": ["Content-Length 必须是非负整数"],
+    "match": [
+      "Content-Length 必须是非负整数"
+    ],
     "page": "settings",
     "topic": "app"
   },
@@ -705,5 +709,21 @@
     ],
     "page": "settings",
     "topic": "mcp"
+  },
+  {
+    "code": "EVALUATION_RECORD_MISSING",
+    "title": "评测记录无法打开",
+    "cause": "评测编号无效，或当前数据目录里没有这条记录。",
+    "steps": [
+      "回到实验评测，刷新页面后从现有评测记录中打开结果。",
+      "确认使用的是原来的数据目录；迁移或备份前先关闭服务。",
+      "旧版报告需同时保留同名 JSON、CSV 和 Markdown，完整报告会在启动时恢复。"
+    ],
+    "match": [
+      "无效的评测编号",
+      "评测记录不存在"
+    ],
+    "page": "experiments",
+    "topic": "eval_history"
   }
 ]

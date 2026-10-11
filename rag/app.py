@@ -9,7 +9,7 @@ import threading
 from urllib.parse import urlparse
 import uuid
 
-from fastapi import FastAPI, File, UploadFile, Request, BackgroundTasks
+from fastapi import FastAPI, File, UploadFile, Request, BackgroundTasks, Query
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -21,6 +21,7 @@ from .config import Config, ROOT, UserError, runtime_paths
 from .documents import MAX_FILE
 from .engine import Engine
 from .evaluation import run_evaluation, run_ablation, save_report
+from .evaluation_history import EvaluationHistory, request_snapshot, report_summary
 from .settings import SettingsInput, ProbeInput, SettingsStore, connection_test, available_models
 from .mcp_server import build_mcp
 from .errors import diagnose, save_diagnostic, request_stage
@@ -70,17 +71,20 @@ class Jobs:
                 raise UserError("正在处理任务，请等它完成后再保存模型设置。")
             yield
 
-    def start(self, task, operation="任务"):
+    def start(self, task, operation="任务", on_start=None, on_progress=None, on_error=None):
         with self.lock:
             if any(j["state"] == "running" for j in self.items.values()):
                 raise UserError("已有任务正在运行，请稍等。")
             if len(self.items) > 40:
                 self.items.clear()
             key = uuid.uuid4().hex
+            started = on_start(key) if on_start else None
             self.items[key] = {"id": key, "state": "running", "message": operation + "：开始处理", "operation": operation}
         def update(message):
             with self.lock:
                 self.items[key]["message"] = message
+            if on_progress:
+                on_progress(key, message)
         def work():
             try:
                 result = task(update)
@@ -94,10 +98,16 @@ class Jobs:
                 error = diagnose(e, stage=stage, operation=operation, secrets=secrets)
                 if cfg:
                     error["diagnostic_file"] = save_diagnostic(error, cfg.data_dir)
+                if on_error:
+                    try:
+                        on_error(key, error)
+                    except Exception:
+                        # A full/unwritable disk can also prevent saving the failure.
+                        error["history_save_failed"] = True
                 with self.lock:
                     self.items[key].update(state="error", message=error["message"], error=error)
         self.executor.submit(work)
-        return {"job_id": key}
+        return {"job_id": key, **(started or {})}
 
     def get(self, key):
         with self.lock:
@@ -121,6 +131,9 @@ def create_app(config=None, bootstrap=True, restart_callback=None):
         try:
             engine = Engine(cfg)
             app.state.engine = engine
+            app.state.evaluations = EvaluationHistory(engine.db, engine.lock)
+            app.state.evaluations.recover_interrupted()
+            app.state.evaluations.import_reports(cfg.data_dir / "reports")
             if bootstrap and not engine.meta("bootstrapped"):
                 stage = "首次载入演示资料"
                 engine.seed()
@@ -330,9 +343,16 @@ def create_app(config=None, bootstrap=True, restart_callback=None):
     def evaluate(req: EvaluationRequest):
         if req.live and req.ablation:
             raise UserError("优化前后对比使用离线资料；真实模型评测请单独运行。")
-        current_config = app.state.engine.config
-        if req.live and current_config.answer_mode != "llm":
-            raise UserError("请先连接对话模型，再运行真实模型评测。")
+        history = app.state.evaluations
+        kind = "live" if req.live else "ablation" if req.ablation else "parameters"
+        def begin(key):
+            nonlocal current_config, evaluation_id
+            current_config = app.state.engine.config
+            if req.live and current_config.answer_mode != "llm":
+                raise UserError("请先连接对话模型，再运行真实模型评测。")
+            evaluation_id = key
+            return {"evaluation": history.create(key, kind, request_snapshot(current_config, req.live, req.ablation))}
+        current_config, evaluation_id = None, None
         def run(progress):
             options = {"config": current_config, "live": req.live, "progress": progress}
             if req.live:
@@ -343,16 +363,25 @@ def create_app(config=None, bootstrap=True, restart_callback=None):
             else:
                 result = run_evaluation(**options)
             progress("保存评测报告：JSON、CSV 与 Markdown")
-            names = save_report(result, current_config.data_dir / "reports", "eval_" + uuid.uuid4().hex[:10])
-            summary = {k: v for k, v in result.items() if k != "runs"}
-            summary["runs"] = [{k: v for k, v in r.items() if k != "details"} for r in result["runs"]]
-            summary["files"] = names
+            names = save_report(result, current_config.data_dir / "reports", "eval_" + evaluation_id)
+            summary = report_summary(result, names)
+            history.finish(evaluation_id, result=summary)
             return summary
-        return jobs.start(run, "真实模型评测" if req.live else "优化前后对比" if req.ablation else "离线参数对照评测")
+        return jobs.start(run, "真实模型评测" if req.live else "优化前后对比" if req.ablation else "离线参数对照评测",
+                          on_start=begin, on_progress=history.progress,
+                          on_error=lambda key, error: history.finish(key, error=error))
+
+    @app.get("/api/evaluations")
+    def evaluations(offset: int = Query(default=0, ge=0), limit: int = Query(default=20, ge=1, le=50)):
+        return app.state.evaluations.list(offset, limit)
+
+    @app.get("/api/evaluations/{key}")
+    def evaluation(key: str):
+        return app.state.evaluations.get(key)
 
     @app.get("/api/reports/{name}")
     def report(name: str):
-        if not re.fullmatch(r"eval_[a-f0-9]{10}\.(json|csv|md)", name):
+        if not re.fullmatch(r"eval_(?:[a-f0-9]{10}|[a-f0-9]{32})\.(json|csv|md)", name):
             raise UserError("无效的报告名。")
         path = cfg.data_dir / "reports" / name
         if not path.is_file():

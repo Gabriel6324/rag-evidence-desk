@@ -136,5 +136,7 @@ def request_stage(path):
         "/api/build": "建立资料索引", "/api/ask": "资料检索与回答",
         "/api/evaluate": "评测设置检查", "/api/samples": "载入演示资料",
     }
+    if path.startswith("/api/evaluations"):
+        return "读取评测记录"
     return operations.get(path, "处理 " + path.split("?")[0])
 
