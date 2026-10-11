@@ -239,10 +239,10 @@ class APITests(unittest.TestCase):
 
 class EvaluationTests(unittest.TestCase):
     def test_annotated_spans_exist_and_report_is_honest(self):
-        questions=json.loads((ROOT/'eval/questions.json').read_text())
+        questions=json.loads((ROOT/'eval/questions.json').read_text(encoding='utf-8'))
         for q in questions:
             for atom in q['evidence']:
-                self.assertIn(atom['quote'],(ROOT/'samples'/atom['source']).read_text())
+                self.assertIn(atom['quote'],(ROOT/'samples'/atom['source']).read_text(encoding='utf-8'))
         result=run_evaluation(sizes=[420],ks=[5],strategies=['hybrid'])
         self.assertEqual(len(result['runs']),1);self.assertEqual(result['question_count'],18)
         m=result['runs'][0]['metrics']
