@@ -57,6 +57,10 @@ def main():
                 expect(page.locator('#welcome-dialog')).to_be_visible()
                 expect(page.locator('#welcome-dialog')).to_contain_text('知据帮你从文档里找答案')
                 page.locator('#welcome-start').click()
+                expect(page.locator('#delete-session')).to_be_disabled()
+                expect(page.locator('#delete-session')).to_have_attribute('title', '请先选择一条已保存的会话。')
+                assert page.locator('#delete-session').evaluate('(e)=>getComputedStyle(e).cursor') == 'not-allowed'
+                checks.append('disabled session delete uses not-allowed cursor and explains why')
                 page.locator('#open-help').click()
                 expect(page.locator('#help-dialog')).to_contain_text('知据是做什么的')
                 assert 'DeepSeek 开源' not in page.locator('#help-dialog').inner_text()
@@ -133,9 +137,19 @@ def main():
                 page.screenshot(path=str(out / '02_settings.png'), full_page=True)
                 permission = diagnose(PermissionError(errno.EACCES, 'denied', 'C:/Users/Demo/AppData/知据/reports'),
                                       stage='保存评测 JSON / CSV / Markdown 报告', operation='离线对照评测')
-                page.route('**/api/evaluate', lambda route: route.fulfill(json={'job_id': 'qa-failure'}))
-                page.route('**/api/jobs/qa-failure/events', lambda route: route.fulfill(content_type='text/event-stream',
+                failed_id = 'a' * 32
+                failed_record = {'id': failed_id, 'number': 99, 'kind': 'parameters', 'state': 'running',
+                                 'created_at': datetime.now(timezone.utc).isoformat(), 'message': '开始评测…',
+                                 'request': {'live': False, 'parameters': {}, 'models': {}}, 'result': None, 'error': None}
+                def mock_failed_evaluation():
+                    page.route('**/api/evaluate', lambda route: route.fulfill(json={'job_id': failed_id, 'evaluation': failed_record}))
+                    page.route('**/api/evaluations/' + failed_id, lambda route: route.fulfill(json={**failed_record, 'state': 'error', 'message': permission['message'], 'error': permission}))
+                    page.route('**/api/jobs/' + failed_id + '/events', lambda route: route.fulfill(content_type='text/event-stream',
                            body='event: failed\ndata: ' + json.dumps({'message': permission['message'], 'error': permission}, ensure_ascii=False) + '\n\n'))
+                def unmock_failed_evaluation():
+                    for path in ('**/api/evaluate', '**/api/evaluations/' + failed_id, '**/api/jobs/' + failed_id + '/events'):
+                        page.unroute(path)
+                mock_failed_evaluation()
                 page.locator('[data-page=experiments]').click()
                 page.locator('#run-eval').click()
                 expect(page.locator('#global-alert')).to_contain_text('文件或目录访问被拒绝')
@@ -150,8 +164,7 @@ def main():
                 page.locator('#dismiss-error').click()
                 page.locator('[data-page=experiments]').click()
                 expect(page.locator('#global-alert')).to_be_hidden()
-                page.unroute('**/api/evaluate')
-                page.unroute('**/api/jobs/qa-failure/events')
+                unmock_failed_evaluation()
                 key_error = diagnose(UserError('模型接口 HTTP 401'), stage='测试对话模型', operation='测试模型连接')
                 page.route('**/api/settings/test', lambda route: route.fulfill(status=400, json={'detail': key_error['message'], 'error': key_error}))
                 page.locator('[data-page=settings]').click()
@@ -164,24 +177,55 @@ def main():
                 page.unroute('**/api/settings/test')
                 checks.append('SSE failure stage/path, corresponding guide, cross-page persistence, X dismissal and distinct new failure')
                 page.locator('[data-page=experiments]').click()
-                for topic in ['evaluation', 'eval_parameters', 'eval_ablation', 'eval_live', 'metrics']:
+                for topic in ['evaluation', 'eval_parameters', 'eval_ablation', 'eval_live', 'eval_history', 'metrics']:
                     page.locator(f'#page-experiments [data-help={topic}]').first.click()
                     expect(page.locator('#field-help-dialog')).to_be_visible()
                     page.locator('#field-help-done').click()
                 page.locator('#run-eval').click()
-                expect(page.locator('#eval-status')).to_have_text('12 组 · 18 题 / 组', timeout=60000)
-                expect(page.locator('.eval-table tbody tr')).to_have_count(12)
+                expect(page.locator('#run-eval')).to_have_attribute('aria-busy', 'true')
+                assert page.locator('#run-eval').evaluate('(e)=>getComputedStyle(e).cursor') == 'wait'
+                assert page.locator('#run-ablation').evaluate('(e)=>getComputedStyle(e).cursor') == 'not-allowed'
+                latest = page.locator('.evaluation-run').first
+                expect(latest.locator('.evaluation-progress')).to_have_text('12 组 · 18 题 / 组', timeout=60000)
+                expect(latest.locator('.eval-table tbody tr')).to_have_count(12)
+                first_id = latest.get_attribute('data-evaluation-id')
+                first_file = latest.get_by_text('下载 JSON', exact=True).get_attribute('href')
                 with page.expect_download() as dl:
-                    page.get_by_text('下载 JSON', exact=True).click()
+                    latest.get_by_text('下载 JSON', exact=True).click()
                 assert dl.value.suggested_filename.endswith('.json')
                 page.screenshot(path=str(out / '04_evaluation.png'), full_page=True)
                 page.locator('#run-ablation').click()
-                expect(page.locator('#eval-status')).to_have_text('4 组 · 18 题 / 组', timeout=60000)
-                expect(page.locator('.eval-table tbody tr')).to_have_count(4)
-                expect(page.locator('.eval-table tbody tr').last).to_contain_text('100.0%')
+                expect(latest.locator('.evaluation-progress')).to_have_text('4 组 · 18 题 / 组', timeout=60000)
+                expect(latest.locator('.eval-table tbody tr')).to_have_count(4)
+                expect(latest.locator('.eval-table tbody tr').last).to_contain_text('100.0%')
+                previous = page.locator('#evaluation-' + first_id)
+                assert not previous.evaluate('(e)=>e.open')
+                previous.locator('summary').click()
+                expect(previous.locator('.eval-table tbody tr')).to_have_count(12)
+                assert previous.get_by_text('下载 JSON', exact=True).get_attribute('href') == first_file
+                assert latest.get_by_text('下载 JSON', exact=True).get_attribute('href') != first_file
+                with page.expect_download() as dl:
+                    previous.get_by_text('下载 JSON', exact=True).click()
+                assert dl.value.suggested_filename in first_file
+                page.reload(wait_until='networkidle')
+                page.locator('[data-page=experiments]').click()
+                expect(page.locator('.evaluation-run')).to_have_count(2)
+                expect(latest.locator('.evaluation-progress')).to_have_text('4 组 · 18 题 / 组')
+                expect(page.locator('#evaluation-' + first_id)).to_have_attribute('data-state', 'done')
+                mock_failed_evaluation()
+                page.locator('#run-eval').click()
+                expect(latest).to_have_attribute('data-state', 'error')
+                expect(page.locator('.evaluation-run')).to_have_count(3)
+                expect(page.locator('#evaluation-' + first_id)).to_have_attribute('data-state', 'done')
+                page.locator('#dismiss-error').click()
+                latest.get_by_text('查看原因与解决方法', exact=True).click()
+                expect(page.locator('#error-content')).to_contain_text('保存评测')
+                page.locator('#close-error-dialog').click()
+                unmock_failed_evaluation()
+                page.screenshot(path=str(out / '06_evaluation_history.png'), full_page=True)
                 page.locator('#run-live-eval').click()
                 expect(page.locator('#toast')).to_contain_text('请先勾选')
-                checks.append('evaluation purpose and metric help, real 12-group/4-group offline runs, export and API consent')
+                checks.append('12-group and 4-group independent cards, newest first, collapse, separate exports, refresh recovery, per-run failure guide, running/disabled cursors and API consent')
                 page.set_viewport_size({'width': 390, 'height': 844})
                 for name in ['chat', 'library', 'experiments', 'settings']:
                     page.locator(f'[data-page={name}]').click()
